@@ -9,6 +9,7 @@ from webull_lab.account import ResponseError, get_account_list
 from webull_lab.clients import build_data_client, build_trade_client
 from webull_lab.config import load_settings, redact_secret
 from webull_lab.market_data import get_stock_snapshot
+from webull_lab.orders import preview_stock_limit_buy
 
 app = typer.Typer(help="Webull OpenAPI Thai Lab commands.")
 console = Console()
@@ -49,6 +50,29 @@ def stock_snapshot(symbol: str = typer.Argument("AAPL")) -> None:
         settings = load_settings()
         data_client = build_data_client(settings)
         payload = get_stock_snapshot(data_client, symbol)
+        console.print(json.dumps(payload, ensure_ascii=False, indent=2))
+    except (ResponseError, RuntimeError, ValueError) as error:
+        print_error_and_exit(error)
+
+
+@app.command("preview-stock-buy")
+def preview_stock_buy(
+    symbol: str = typer.Argument("AAPL"),
+    limit_price: str = typer.Argument("100"),
+    quantity: str = typer.Argument("1"),
+) -> None:
+    try:
+        settings = load_settings()
+        if settings.account_id is None:
+            raise ValueError("Set WEBULL_ACCOUNT_ID in .env before previewing an order.")
+        trade_client = build_trade_client(settings)
+        payload = preview_stock_limit_buy(
+            trade_client,
+            settings.account_id,
+            symbol,
+            limit_price,
+            quantity,
+        )
         console.print(json.dumps(payload, ensure_ascii=False, indent=2))
     except (ResponseError, RuntimeError, ValueError) as error:
         print_error_and_exit(error)
