@@ -6,8 +6,9 @@ import typer
 from rich.console import Console
 
 from webull_lab.account import get_account_list
-from webull_lab.clients import build_trade_client
+from webull_lab.clients import build_data_client, build_trade_client
 from webull_lab.config import load_settings, redact_secret
+from webull_lab.market_data import get_stock_snapshot
 
 app = typer.Typer(help="Webull OpenAPI Thai Lab commands.")
 console = Console()
@@ -31,6 +32,14 @@ def account_list() -> None:
     settings = load_settings()
     trade_client = build_trade_client(settings)
     payload = get_account_list(trade_client)
+    console.print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+@app.command("stock-snapshot")
+def stock_snapshot(symbol: str = typer.Argument("AAPL")) -> None:
+    settings = load_settings()
+    data_client = build_data_client(settings)
+    payload = get_stock_snapshot(data_client, symbol)
     console.print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
