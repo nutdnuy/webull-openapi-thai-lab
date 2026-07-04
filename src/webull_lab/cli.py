@@ -22,7 +22,8 @@ def doctor() -> None:
     console.print(f"Trading endpoint: {settings.trading_endpoint}")
     console.print(f"App key: {redact_secret(settings.app_key)}")
     console.print(f"App secret: {redact_secret(settings.app_secret)}")
-    console.print(f"Account ID: {settings.account_id or '<not set>'}")
+    account_id = redact_secret(settings.account_id) if settings.account_id else "<not set>"
+    console.print(f"Account ID: {account_id}")
 
 
 @app.command("account-list")
