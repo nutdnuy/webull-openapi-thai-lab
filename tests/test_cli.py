@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from typer.testing import CliRunner
 
 from webull_lab.account import ResponseError
@@ -90,6 +92,76 @@ def test_account_list_prints_error_without_traceback(monkeypatch):
     monkeypatch.setattr("webull_lab.cli.get_account_list", fake_get_account_list)
 
     result = CliRunner().invoke(app, ["account-list"])
+
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    assert "HTTP 401" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_preview_stock_buy_prints_json_payload(monkeypatch):
+    calls = []
+    settings = SimpleNamespace(account_id="acct_1")
+    trade_client = object()
+
+    def fake_build_trade_client(received_settings):
+        calls.append(("build_trade_client", received_settings))
+        return trade_client
+
+    def fake_preview_stock_limit_buy(
+        received_trade_client, account_id, symbol, limit_price, quantity
+    ):
+        calls.append(
+            (
+                "preview_stock_limit_buy",
+                received_trade_client,
+                account_id,
+                symbol,
+                limit_price,
+                quantity,
+            )
+        )
+        return {"preview": "ok", "symbol": symbol}
+
+    monkeypatch.setattr("webull_lab.cli.load_settings", lambda: settings)
+    monkeypatch.setattr("webull_lab.cli.build_trade_client", fake_build_trade_client)
+    monkeypatch.setattr("webull_lab.cli.preview_stock_limit_buy", fake_preview_stock_limit_buy)
+
+    result = CliRunner().invoke(app, ["preview-stock-buy", "AAPL", "100", "1"])
+
+    assert result.exit_code == 0
+    assert '"preview": "ok"' in result.output
+    assert '"symbol": "AAPL"' in result.output
+    assert calls == [
+        ("build_trade_client", settings),
+        ("preview_stock_limit_buy", trade_client, "acct_1", "AAPL", "100", "1"),
+    ]
+
+
+def test_preview_stock_buy_missing_account_id_prints_error_without_traceback(monkeypatch):
+    monkeypatch.setattr("webull_lab.cli.load_settings", lambda: SimpleNamespace(account_id=None))
+
+    result = CliRunner().invoke(app, ["preview-stock-buy", "AAPL", "100", "1"])
+
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    assert "WEBULL_ACCOUNT_ID" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_preview_stock_buy_prints_response_error_without_traceback(monkeypatch):
+    monkeypatch.setattr(
+        "webull_lab.cli.load_settings",
+        lambda: SimpleNamespace(account_id="acct_1"),
+    )
+    monkeypatch.setattr("webull_lab.cli.build_trade_client", lambda settings: object())
+
+    def fake_preview_stock_limit_buy(trade_client, account_id, symbol, limit_price, quantity):
+        raise ResponseError("HTTP 401: bad signature")
+
+    monkeypatch.setattr("webull_lab.cli.preview_stock_limit_buy", fake_preview_stock_limit_buy)
+
+    result = CliRunner().invoke(app, ["preview-stock-buy", "AAPL", "100", "1"])
 
     assert result.exit_code == 1
     assert "Error:" in result.output
