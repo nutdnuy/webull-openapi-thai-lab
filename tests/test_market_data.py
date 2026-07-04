@@ -48,3 +48,21 @@ def test_get_stock_bars_uses_requested_timespan():
 
     assert payload == [{"symbol": "AAPL", "close": "200.00"}]
     assert client.market_data.calls == [("bars", "AAPL", "US_STOCK", "M1")]
+
+
+def test_get_stock_snapshot_normalizes_symbol_whitespace_and_case():
+    client = FakeDataClient()
+
+    payload = get_stock_snapshot(client, " aapl ")
+
+    assert payload == {"symbol": "AAPL", "last_price": "200.00"}
+    assert client.market_data.calls == [("snapshot", "AAPL", "US_STOCK", True, True)]
+
+
+def test_get_stock_bars_normalizes_symbol_whitespace_and_case():
+    client = FakeDataClient()
+
+    payload = get_stock_bars(client, " aapl ", "M5")
+
+    assert payload == [{"symbol": "AAPL", "close": "200.00"}]
+    assert client.market_data.calls == [("bars", "AAPL", "US_STOCK", "M5")]
