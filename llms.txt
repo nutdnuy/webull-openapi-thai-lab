@@ -1,0 +1,53 @@
+# Webull OpenAPI Thai Lab
+
+> Thai tutorial repository for learning Webull OpenAPI safely with Python.
+
+This repository teaches setup, read-only account calls, market data calls,
+order preview, and AI-assisted development workflows for Webull OpenAPI.
+It is educational material, not a production trading system.
+
+## Start Here
+
+- [Agent guide](AGENTS.md): shared instructions for Claude, Codex, and other AI assistants.
+- [Claude guide](CLAUDE.md): Claude-specific pointer to the shared guide.
+- [README](README.md): user-facing overview, quick start, and learning path.
+- [Learning path](docs/00-learning-path-th.md): Thai course sequence.
+
+## Lessons
+
+- [API key setup](docs/01-api-key-setup-th.md)
+- [First API call](docs/02-first-call-th.md)
+- [Market data](docs/03-market-data-th.md)
+- [Order preview and guardrails](docs/04-order-preview-and-guardrails-th.md)
+- [AI-assisted Webull development](docs/05-ai-assisted-webull-dev-th.md)
+- [GitHub publishing checklist](docs/99-publishing-github-th.md)
+
+## Code Entry Points
+
+- [Configuration](src/webull_lab/config.py)
+- [SDK clients](src/webull_lab/clients.py)
+- [Account helpers](src/webull_lab/account.py)
+- [Market data helpers](src/webull_lab/market_data.py)
+- [Order helpers](src/webull_lab/orders.py)
+- [CLI](src/webull_lab/cli.py)
+
+## Examples
+
+- [Account list example](examples/01_account_list.py)
+- [Market data snapshot example](examples/02_market_data_snapshot.py)
+- [Order preview example](examples/03_order_preview.py)
+
+## Safety Summary
+
+- UAT is the default environment.
+- Do not commit `.env`, Webull token files, app keys, app secrets, account IDs, or private data.
+- Do not add default live-order placement behavior.
+- Keep tests offline with fake clients.
+- Verify with `python -m pytest -q` and `python -m ruff check .`.
+
+## Official Sources
+
+- Webull API Docs: https://developer.webull.com/apis/docs/
+- Webull official llms.txt: https://developer.webull.com/apis/llms.txt
+- Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
+

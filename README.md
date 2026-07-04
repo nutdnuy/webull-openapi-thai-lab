@@ -49,6 +49,14 @@ webull-lab account-list
 6. [ใช้ AI ช่วย dev กับ Webull docs](docs/05-ai-assisted-webull-dev-th.md)
 7. [Publish ขึ้น GitHub](docs/99-publishing-github-th.md)
 
+## สำหรับ Claude / Codex
+
+ถ้าจะโยนลิงก์ GitHub นี้ให้ AI coding assistant อ่าน ให้เริ่มจากไฟล์เหล่านี้:
+
+- [AGENTS.md](AGENTS.md) - กติกาหลักสำหรับ Codex, Claude, และ agent tools
+- [CLAUDE.md](CLAUDE.md) - entrypoint สั้นสำหรับ Claude
+- [llms.txt](llms.txt) - แผนที่ไฟล์สำคัญของ repo สำหรับ LLM
+
 ## Official Sources
 
 - Webull API Docs: https://developer.webull.com/apis/docs/
