@@ -2,8 +2,24 @@ import pytest
 
 from webull_lab.config import Settings, load_settings, redact_secret
 
+WEBULL_ENV_VARS = [
+    "WEBULL_ENV",
+    "WEBULL_REGION",
+    "WEBULL_APP_KEY",
+    "WEBULL_APP_SECRET",
+    "WEBULL_ACCOUNT_ID",
+    "WEBULL_TOKEN_DIR",
+    "WEBULL_ALLOW_LIVE_ORDERS",
+]
+
+
+def clear_webull_env(monkeypatch):
+    for key in WEBULL_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
+
 
 def test_load_settings_uses_uat_endpoint_by_default(monkeypatch, tmp_path):
+    clear_webull_env(monkeypatch)
     monkeypatch.setenv("WEBULL_APP_KEY", "key_123")
     monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
     monkeypatch.setenv("WEBULL_TOKEN_DIR", str(tmp_path / "token"))
@@ -19,14 +35,14 @@ def test_load_settings_uses_uat_endpoint_by_default(monkeypatch, tmp_path):
 
 
 def test_load_settings_rejects_missing_credentials(monkeypatch):
-    monkeypatch.delenv("WEBULL_APP_KEY", raising=False)
-    monkeypatch.delenv("WEBULL_APP_SECRET", raising=False)
+    clear_webull_env(monkeypatch)
 
     with pytest.raises(RuntimeError, match="WEBULL_APP_KEY"):
         load_settings(env_file=None)
 
 
 def test_load_settings_rejects_unknown_environment(monkeypatch):
+    clear_webull_env(monkeypatch)
     monkeypatch.setenv("WEBULL_ENV", "paper")
     monkeypatch.setenv("WEBULL_APP_KEY", "key_123")
     monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
@@ -36,9 +52,7 @@ def test_load_settings_rejects_unknown_environment(monkeypatch):
 
 
 def test_load_settings_reads_explicit_env_file(monkeypatch, tmp_path):
-    monkeypatch.delenv("WEBULL_APP_KEY", raising=False)
-    monkeypatch.delenv("WEBULL_APP_SECRET", raising=False)
-    monkeypatch.delenv("WEBULL_TOKEN_DIR", raising=False)
+    clear_webull_env(monkeypatch)
     env_file = tmp_path / ".env"
     token_dir = tmp_path / "tokens"
     env_file.write_text(
@@ -91,6 +105,7 @@ def test_settings_repr_does_not_expose_secret():
 
 
 def test_live_orders_enabled_is_snapshot(monkeypatch):
+    clear_webull_env(monkeypatch)
     monkeypatch.setenv("WEBULL_APP_KEY", "key_123")
     monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
     monkeypatch.setenv("WEBULL_ALLOW_LIVE_ORDERS", "I_UNDERSTAND")
