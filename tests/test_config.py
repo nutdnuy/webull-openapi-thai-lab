@@ -81,6 +81,28 @@ def test_load_settings_reads_explicit_env_file(monkeypatch, tmp_path):
     assert settings.live_orders_enabled is True
 
 
+def test_load_settings_treats_blank_account_id_as_missing(monkeypatch):
+    clear_webull_env(monkeypatch)
+    monkeypatch.setenv("WEBULL_APP_KEY", "key_123")
+    monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
+    monkeypatch.setenv("WEBULL_ACCOUNT_ID", "   ")
+
+    settings = load_settings(env_file=None)
+
+    assert settings.account_id is None
+
+
+def test_load_settings_strips_account_id(monkeypatch):
+    clear_webull_env(monkeypatch)
+    monkeypatch.setenv("WEBULL_APP_KEY", "key_123")
+    monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
+    monkeypatch.setenv("WEBULL_ACCOUNT_ID", "  acct_1  ")
+
+    settings = load_settings(env_file=None)
+
+    assert settings.account_id == "acct_1"
+
+
 def test_redact_secret_keeps_logs_safe():
     assert redact_secret("abcd1234efgh5678") == "abcd...5678"
     assert redact_secret("short") == "*****"

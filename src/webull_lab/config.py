@@ -61,6 +61,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
     if not app_key or not app_secret:
         raise RuntimeError("WEBULL_APP_KEY and WEBULL_APP_SECRET are required")
 
+    account_id_value = os.getenv("WEBULL_ACCOUNT_ID", "").strip()
     token_dir_value = os.getenv("WEBULL_TOKEN_DIR", "").strip()
 
     return Settings(
@@ -68,7 +69,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         region=os.getenv("WEBULL_REGION", "us").strip().lower(),
         app_key=app_key,
         app_secret=app_secret,
-        account_id=os.getenv("WEBULL_ACCOUNT_ID") or None,
+        account_id=account_id_value or None,
         token_dir=Path(token_dir_value) if token_dir_value else None,
         live_orders_enabled=os.getenv("WEBULL_ALLOW_LIVE_ORDERS") == "I_UNDERSTAND",
     )
