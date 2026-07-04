@@ -59,19 +59,25 @@ gitleaks detect --source . --no-banner
 
 ## 3. สร้าง GitHub repo และ push
 
-เมื่อพร้อมแล้วรัน:
+ถ้ายังไม่มี GitHub repo ให้รัน:
 
 ```bash
 gh repo create nutdnuy/webull-openapi-thai-lab --public --source=. --remote=origin --push
 ```
 
-ถ้ามี remote `origin` อยู่แล้ว ให้ตรวจด้วย:
+ถ้า repo หรือ remote `origin` มีอยู่แล้ว ให้ตรวจด้วย:
 
 ```bash
 git remote -v
 ```
 
-แล้วค่อย push ไป remote ที่ถูกต้อง
+แล้วค่อย push ไป remote ที่ถูกต้อง:
+
+```bash
+git push -u origin main
+```
+
+หมายเหตุ: ถ้า push ถูกปฏิเสธด้วยข้อความว่า token ไม่มีสิทธิ์สร้างหรือแก้ `.github/workflows/ci.yml` ให้ login GitHub CLI ใหม่หรือใช้ PAT ที่มี `workflow` scope ก่อน แล้วค่อย push อีกครั้ง
 
 ## 4. ตั้ง topics
 
