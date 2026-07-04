@@ -1,5 +1,7 @@
 # Webull OpenAPI Thai Lab
 
+[![CI](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/ci.yml)
+
 คู่มือและตัวอย่างโค้ดภาษา Python สำหรับเรียนรู้ Webull OpenAPI แบบปลอดภัย ตั้งแต่การสร้าง API Key, เรียกบัญชีใน UAT, ดึง Market Data, preview order และวาง guardrail ก่อนแตะคำสั่งซื้อขายจริง
 
 ## เหมาะกับใคร
