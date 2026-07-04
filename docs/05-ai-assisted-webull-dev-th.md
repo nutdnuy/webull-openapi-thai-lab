@@ -5,6 +5,9 @@
 Official sources:
 
 - Webull API Docs: https://developer.webull.com/apis/docs/
+- Webull SDK Docs: https://developer.webull.com/apis/docs/sdk/
+- Webull Market Data Overview: https://developer.webull.com/apis/docs/market-data-api/overview/
+- Webull Trading API Overview: https://developer.webull.com/apis/docs/trade-api/overview/
 - Webull llms.txt: https://developer.webull.com/apis/llms.txt
 - Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
 
@@ -26,6 +29,9 @@ https://developer.webull.com/apis/llms.txt
 You are helping me extend a Python tutorial repo for Webull OpenAPI.
 Use only official Webull sources:
 - https://developer.webull.com/apis/docs/
+- https://developer.webull.com/apis/docs/sdk/
+- https://developer.webull.com/apis/docs/market-data-api/overview/
+- https://developer.webull.com/apis/docs/trade-api/overview/
 - https://developer.webull.com/apis/llms.txt
 - https://github.com/webull-inc/webull-openapi-python-sdk
 

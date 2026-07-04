@@ -5,6 +5,7 @@
 Official sources:
 
 - Webull API Docs: https://developer.webull.com/apis/docs/
+- Webull Market Data Overview: https://developer.webull.com/apis/docs/market-data-api/overview/
 - Webull llms.txt: https://developer.webull.com/apis/llms.txt
 - Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
 

@@ -5,6 +5,8 @@
 Official sources:
 
 - Webull API Docs: https://developer.webull.com/apis/docs/
+- Webull SDK Docs: https://developer.webull.com/apis/docs/sdk/
+- Webull Trading API Overview: https://developer.webull.com/apis/docs/trade-api/overview/
 - Webull llms.txt: https://developer.webull.com/apis/llms.txt
 - Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
 
@@ -22,7 +24,7 @@ webull-lab doctor
 us-openapi-alb.uat.webullbroker.com
 ```
 
-คำสั่งนี้ redact app key, app secret และ account id ก่อนแสดงผล จึงใช้ตรวจ setup ได้โดยไม่เผลอ print secret แบบเต็ม
+เมื่อ configuration โหลดสำเร็จ คำสั่งนี้ redact app key, app secret และ account id ก่อนแสดงผล จึงใช้ตรวจ setup ได้โดยไม่เผลอ print secret แบบเต็ม
 
 ## 2. เรียก account list
 
@@ -32,7 +34,7 @@ us-openapi-alb.uat.webullbroker.com
 webull-lab account-list
 ```
 
-คำสั่งนี้โหลด `.env`, สร้าง trade client และเรียก account list ผ่าน Webull Python SDK. ถ้า credential ถูกต้อง ควรได้ JSON response จาก UAT. ถ้ามี expected error เช่น config ไม่ครบหรือ API response ไม่สำเร็จ CLI จะแสดง error สั้น ๆ ด้วยรูปแบบเดียวกัน
+คำสั่งนี้โหลด `.env`, สร้าง trade client และเรียก account list ผ่าน Webull Python SDK. ถ้า credential ถูกต้อง ควรได้ JSON response จาก UAT. ถ้ามี expected error เช่น config ไม่ครบหรือ API response ไม่สำเร็จ คำสั่ง `account-list` จะแสดง error สั้น ๆ โดยไม่พ่น traceback ยาว
 
 ## 3. ใส่ account id ใน `.env`
 
