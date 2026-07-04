@@ -8,7 +8,7 @@ def test_load_settings_uses_uat_endpoint_by_default(monkeypatch, tmp_path):
     monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
     monkeypatch.setenv("WEBULL_TOKEN_DIR", str(tmp_path / "token"))
 
-    settings = load_settings()
+    settings = load_settings(env_file=None)
 
     assert settings.env == "uat"
     assert settings.region == "us"
@@ -23,7 +23,7 @@ def test_load_settings_rejects_missing_credentials(monkeypatch):
     monkeypatch.delenv("WEBULL_APP_SECRET", raising=False)
 
     with pytest.raises(RuntimeError, match="WEBULL_APP_KEY"):
-        load_settings()
+        load_settings(env_file=None)
 
 
 def test_load_settings_rejects_unknown_environment(monkeypatch):
@@ -32,7 +32,39 @@ def test_load_settings_rejects_unknown_environment(monkeypatch):
     monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
 
     with pytest.raises(ValueError, match="WEBULL_ENV"):
-        load_settings()
+        load_settings(env_file=None)
+
+
+def test_load_settings_reads_explicit_env_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("WEBULL_APP_KEY", raising=False)
+    monkeypatch.delenv("WEBULL_APP_SECRET", raising=False)
+    monkeypatch.delenv("WEBULL_TOKEN_DIR", raising=False)
+    env_file = tmp_path / ".env"
+    token_dir = tmp_path / "tokens"
+    env_file.write_text(
+        "\n".join(
+            [
+                "WEBULL_ENV=prod",
+                "WEBULL_REGION=us",
+                "WEBULL_APP_KEY=file_key",
+                "WEBULL_APP_SECRET=file_secret",
+                f"WEBULL_TOKEN_DIR={token_dir}",
+                "WEBULL_ACCOUNT_ID=account_123456789",
+                "WEBULL_ALLOW_LIVE_ORDERS=I_UNDERSTAND",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(env_file=env_file)
+
+    assert settings.env == "prod"
+    assert settings.trading_endpoint == "api.webull.com"
+    assert settings.app_key == "file_key"
+    assert settings.app_secret == "file_secret"
+    assert settings.token_dir == token_dir
+    assert settings.account_id == "account_123456789"
+    assert settings.live_orders_enabled is True
 
 
 def test_redact_secret_keeps_logs_safe():
@@ -46,11 +78,24 @@ def test_settings_repr_does_not_expose_secret():
         region="us",
         app_key="key_123",
         app_secret="secret_456",
-        account_id=None,
+        account_id="account_123456789",
         token_dir=None,
     )
 
     rendered = repr(settings)
 
     assert "secret_456" not in rendered
+    assert "account_123456789" not in rendered
     assert "secr..._456" in rendered
+    assert "acco...6789" in rendered
+
+
+def test_live_orders_enabled_is_snapshot(monkeypatch):
+    monkeypatch.setenv("WEBULL_APP_KEY", "key_123")
+    monkeypatch.setenv("WEBULL_APP_SECRET", "secret_456")
+    monkeypatch.setenv("WEBULL_ALLOW_LIVE_ORDERS", "I_UNDERSTAND")
+
+    settings = load_settings(env_file=None)
+    monkeypatch.setenv("WEBULL_ALLOW_LIVE_ORDERS", "NO")
+
+    assert settings.live_orders_enabled is True

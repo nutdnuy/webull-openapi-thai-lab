@@ -28,14 +28,11 @@ class Settings:
     app_secret: str
     account_id: str | None
     token_dir: Path | None
+    live_orders_enabled: bool = False
 
     @property
     def trading_endpoint(self) -> str:
         return TRADING_ENDPOINTS[self.env]
-
-    @property
-    def live_orders_enabled(self) -> bool:
-        return os.getenv("WEBULL_ALLOW_LIVE_ORDERS") == "I_UNDERSTAND"
 
     def __repr__(self) -> str:
         return (
@@ -44,14 +41,16 @@ class Settings:
             f"region={self.region!r}, "
             f"app_key={redact_secret(self.app_key)!r}, "
             f"app_secret={redact_secret(self.app_secret)!r}, "
-            f"account_id={self.account_id!r}, "
-            f"token_dir={str(self.token_dir) if self.token_dir else None!r}"
+            f"account_id={redact_secret(self.account_id)!r}, "
+            f"token_dir={str(self.token_dir) if self.token_dir else None!r}, "
+            f"live_orders_enabled={self.live_orders_enabled!r}"
             ")"
         )
 
 
-def load_settings(env_file: str | Path = ".env") -> Settings:
-    load_dotenv(env_file)
+def load_settings(env_file: str | Path | None = ".env") -> Settings:
+    if env_file is not None:
+        load_dotenv(env_file)
     env = os.getenv("WEBULL_ENV", "uat").strip().lower()
     if env not in TRADING_ENDPOINTS:
         valid = ", ".join(sorted(TRADING_ENDPOINTS))
@@ -71,4 +70,5 @@ def load_settings(env_file: str | Path = ".env") -> Settings:
         app_secret=app_secret,
         account_id=os.getenv("WEBULL_ACCOUNT_ID") or None,
         token_dir=Path(token_dir_value) if token_dir_value else None,
+        live_orders_enabled=os.getenv("WEBULL_ALLOW_LIVE_ORDERS") == "I_UNDERSTAND",
     )
