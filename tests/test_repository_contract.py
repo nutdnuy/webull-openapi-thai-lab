@@ -22,3 +22,9 @@ def test_readme_mentions_uat_and_secret_safety():
     assert "UAT" in readme
     assert "ห้าม commit" in readme
     assert "App Secret" in readme
+
+
+def test_gitignore_excludes_webull_token_directory():
+    root = Path(__file__).resolve().parents[1]
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ".webull-token/" in gitignore

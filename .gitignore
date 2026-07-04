@@ -3,6 +3,7 @@
 !.env.example
 conf/token.txt
 token.txt
+.webull-token/
 *.pem
 *.key
 *.p12
