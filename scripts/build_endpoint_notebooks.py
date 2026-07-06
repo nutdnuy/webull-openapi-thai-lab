@@ -25,7 +25,6 @@ class NotebookSpec:
     filename: str
     title: str
     slug: str
-    audience: str
     docs: tuple[str, ...]
     endpoints: tuple[Endpoint, ...]
     samples: dict[str, object]
@@ -353,10 +352,6 @@ def notebook_intro(spec: NotebookSpec) -> str:
     return f"""
     # {spec.title}
 
-    Audience:
-    - {spec.audience}
-    - มือใหม่ที่ต้องการเห็น endpoint, parameter, response, และไฟล์ output แบบเป็นขั้นตอน
-
     Learning goals:
     - รู้ว่า endpoint ในหมวดนี้ใช้ทำอะไร
     - เริ่มจาก offline sample response ก่อนใช้ credential จริง
@@ -477,7 +472,6 @@ AUTH_SPEC = NotebookSpec(
     filename="00_auth_token.ipynb",
     title="Webull Thailand Endpoint Tutorial: Authentication Token",
     slug="00-auth-token",
-    audience="คนที่ต้องเข้าใจก่อนว่า token ใช้ทำอะไรและต่างจาก app secret อย่างไร",
     docs=(
         "https://developer.webull.co.th/apis/docs/reference/custom/authentication/",
         "https://developer.webull.co.th/apis/docs/reference/trade-api/create-token/",
@@ -545,7 +539,6 @@ STOCK_SPEC = NotebookSpec(
     filename="01_stock_market_data.ipynb",
     title="Webull Thailand Endpoint Tutorial: Stock Market Data",
     slug="01-stock-market-data",
-    audience="คนที่ต้องการดึง AAPL tick, snapshot, quote, footprint และ historical bars",
     docs=(
         "https://developer.webull.co.th/apis/docs/reference/trade-api/stock-market-data/",
         "https://developer.webull.co.th/apis/docs/reference/trade-api/tick/",
@@ -625,7 +618,6 @@ SCREENER_FUNDAMENTALS_SPEC = NotebookSpec(
     filename="02_screener_fundamentals.ipynb",
     title="Webull Thailand Endpoint Tutorial: Screener and Fundamentals",
     slug="02-screener-fundamentals",
-    audience="คนที่ต้องการอ่าน market movers และข้อมูลพื้นฐาน/analyst ของหุ้น",
     docs=(
         "https://developer.webull.co.th/apis/docs/reference/trade-api/screener/",
         "https://developer.webull.co.th/apis/docs/reference/trade-api/get-gainers-losers/",
@@ -675,7 +667,6 @@ WATCHLIST_SPEC = NotebookSpec(
     filename="03_watchlist_readonly.ipynb",
     title="Webull Thailand Endpoint Tutorial: Watchlist Read-only",
     slug="03-watchlist-readonly",
-    audience="คนที่ต้องการอ่าน watchlist โดยยังไม่แก้ไข watchlist จริง",
     docs=(
         "https://developer.webull.co.th/apis/docs/reference/trade-api/watchlist/",
         "https://developer.webull.co.th/apis/docs/reference/trade-api/get-watchlist/",
@@ -715,7 +706,6 @@ ACCOUNT_ORDER_SPEC = NotebookSpec(
     filename="04_account_assets_order_query.ipynb",
     title="Webull Thailand Endpoint Tutorial: Account, Assets, and Order Query",
     slug="04-account-assets-order-query",
-    audience="คนที่ต้องการอ่านบัญชี, balance, positions และ order query โดยไม่ส่งคำสั่งซื้อขาย",
     docs=(
         "https://developer.webull.co.th/apis/docs/reference/trade-api/account-list/",
         "https://developer.webull.co.th/apis/docs/reference/trade-api/account-balance/",
@@ -768,7 +758,6 @@ ORDER_PREVIEW_SPEC = NotebookSpec(
     filename="05_order_preview_guardrails.ipynb",
     title="Webull Thailand Endpoint Tutorial: Order Preview Guardrails",
     slug="05-order-preview-guardrails",
-    audience="คนที่ต้องการ preview cost/amount ของ order โดยไม่ส่ง order จริง",
     docs=(
         "https://developer.webull.co.th/apis/docs/reference/trade-api/trading/",
         "https://developer.webull.co.th/apis/docs/reference/trade-api/common-order-preview/",

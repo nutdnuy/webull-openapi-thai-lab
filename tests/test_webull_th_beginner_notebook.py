@@ -31,7 +31,6 @@ ORDERED_MARKDOWN_SECTION_MARKERS = (
     "Common Pitfalls",
 )
 REQUIRED_TERMS = (
-    "Audience",
     "Prerequisites",
     "Learning goals",
     "https://developer.webull.co.th/apis/docs/webull-open-api-reference/",

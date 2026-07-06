@@ -50,10 +50,6 @@ def build_notebook() -> dict:
             """
             # Webull Thailand OpenAPI: Beginner AAPL Close Price Tutorial
 
-            Audience:
-            - มือใหม่มาก ๆ ที่เพิ่งเริ่มใช้ API และอยากเห็นภาพว่า request หนึ่งครั้งเกิดอะไรขึ้น
-            - คนที่อยากดึงข้อมูลราคาจาก Webull Thailand OpenAPI แบบ read-only ก่อนนำไปทำกราฟหรือ backtest
-
             Prerequisites:
             - รู้พื้นฐาน Python notebook เช่น run cell, อ่าน error, และดูตัวแปร
             - ติดตั้ง `requests`, `pandas`, `plotly`
