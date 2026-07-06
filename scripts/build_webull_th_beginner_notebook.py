@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501
 from __future__ import annotations
 
 import argparse
@@ -8,6 +9,7 @@ from textwrap import dedent
 
 CELL_IDS = [
     "intro",
+    "visual-quick-start",
     "source-notes",
     "outline",
     "setup-intro",
@@ -61,6 +63,25 @@ def build_notebook() -> dict:
             - รัน offline mode เพื่อเข้าใจ flow โดยไม่ต้องมี credential
             - เปิด live mode เพื่อเรียก `api.webull.co.th` ด้วย `x-access-token` และ `HMAC-SHA256`
             - บันทึก raw JSON และ plot ราคา `close` อย่างเดียว
+            """
+        ),
+        markdown_cell(
+            """
+            ## Visual Quick Start
+
+            อ่านภาพรวมจากรูปก่อน แล้วค่อยไล่ run cell ด้านล่างทีละช่อง.
+
+            ![3 ขั้นตอนเริ่มต้นใช้ Webull Open API](../docs/assets/webull-openapi-quickstart/01-cover.png)
+
+            ![ทำความเข้าใจกับ Webull OpenAPI](../docs/assets/webull-openapi-quickstart/02-api-overview.png)
+
+            ![วิธีขอ App Key และ App Secret](../docs/assets/webull-openapi-quickstart/03-app-key-secret.png)
+
+            ![วิธี Claim ข้อมูล Market Data LV1](../docs/assets/webull-openapi-quickstart/04-claim-market-data.png)
+
+            ![วิธีขอ Access Token](../docs/assets/webull-openapi-quickstart/05-access-token.png)
+
+            ![ตัวอย่างการใช้งาน API](../docs/assets/webull-openapi-quickstart/06-api-examples.png)
             """
         ),
         markdown_cell(

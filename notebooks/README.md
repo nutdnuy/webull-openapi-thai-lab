@@ -10,6 +10,20 @@
 - ใช้ `api.webull.co.th` และ `HMAC-SHA256` เมื่อเปิด live mode
 - ไม่ฝัง App Key, App Secret, token, หรือ account id จริง
 
+## Visual Quick Start
+
+![3 ขั้นตอนเริ่มต้นใช้ Webull Open API](../docs/assets/webull-openapi-quickstart/01-cover.png)
+
+![ทำความเข้าใจกับ Webull OpenAPI](../docs/assets/webull-openapi-quickstart/02-api-overview.png)
+
+![วิธีขอ App Key และ App Secret](../docs/assets/webull-openapi-quickstart/03-app-key-secret.png)
+
+![วิธี Claim ข้อมูล Market Data LV1](../docs/assets/webull-openapi-quickstart/04-claim-market-data.png)
+
+![วิธีขอ Access Token](../docs/assets/webull-openapi-quickstart/05-access-token.png)
+
+![ตัวอย่างการใช้งาน API](../docs/assets/webull-openapi-quickstart/06-api-examples.png)
+
 ## Learning Order
 
 1. [Auth Token](00_auth_token.ipynb)

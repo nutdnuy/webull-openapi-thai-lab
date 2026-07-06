@@ -4,6 +4,22 @@
 
 คู่มือและตัวอย่างโค้ดภาษา Python สำหรับเรียนรู้ Webull OpenAPI แบบปลอดภัย ตั้งแต่การสร้าง API Key, เรียกบัญชีใน UAT, ดึง Market Data, preview order และวาง guardrail ก่อนแตะคำสั่งซื้อขายจริง
 
+## Visual Quick Start
+
+อ่านภาพรวมก่อนเริ่ม notebook:
+
+![3 ขั้นตอนเริ่มต้นใช้ Webull Open API](docs/assets/webull-openapi-quickstart/01-cover.png)
+
+![ทำความเข้าใจกับ Webull OpenAPI](docs/assets/webull-openapi-quickstart/02-api-overview.png)
+
+![วิธีขอ App Key และ App Secret](docs/assets/webull-openapi-quickstart/03-app-key-secret.png)
+
+![วิธี Claim ข้อมูล Market Data LV1](docs/assets/webull-openapi-quickstart/04-claim-market-data.png)
+
+![วิธีขอ Access Token](docs/assets/webull-openapi-quickstart/05-access-token.png)
+
+![ตัวอย่างการใช้งาน API](docs/assets/webull-openapi-quickstart/06-api-examples.png)
+
 ## เหมาะกับใคร
 
 - นักลงทุนหรือ quant developer ที่ต้องการทดลอง Webull API อย่างเป็นระบบ

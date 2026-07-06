@@ -59,9 +59,41 @@ ENDPOINT_LABELS = {
     "order_preview": "Order Preview",
 }
 
+VISUAL_ASSETS = {
+    "cover": ("3 ขั้นตอนเริ่มต้นใช้ Webull Open API", "../docs/assets/webull-openapi-quickstart/01-cover.png"),
+    "overview": ("ทำความเข้าใจกับ Webull OpenAPI", "../docs/assets/webull-openapi-quickstart/02-api-overview.png"),
+    "app_key": ("วิธีขอ App Key และ App Secret", "../docs/assets/webull-openapi-quickstart/03-app-key-secret.png"),
+    "market_data": ("วิธี Claim ข้อมูล Market Data LV1", "../docs/assets/webull-openapi-quickstart/04-claim-market-data.png"),
+    "access_token": ("วิธีขอ Access Token", "../docs/assets/webull-openapi-quickstart/05-access-token.png"),
+    "examples": ("ตัวอย่างการใช้งาน API", "../docs/assets/webull-openapi-quickstart/06-api-examples.png"),
+}
+
+SPEC_VISUAL_KEYS = {
+    "00-auth-token": ("cover", "app_key", "access_token"),
+    "01-stock-market-data": ("overview", "market_data", "examples"),
+    "02-screener-fundamentals": ("overview", "market_data", "examples"),
+    "03-watchlist-readonly": ("overview", "examples"),
+    "04-account-assets-order-query": ("overview", "access_token", "examples"),
+    "05-order-preview-guardrails": ("overview", "access_token", "examples"),
+}
+
 
 def endpoint_label(endpoint: Endpoint) -> str:
     return ENDPOINT_LABELS.get(endpoint.name, endpoint.name.replace("_", " ").title())
+
+
+def visual_markdown(slug: str) -> str:
+    lines = [
+        "## Visual Quick Start",
+        "",
+        "ดูรูปภาพรวมก่อน แล้วค่อย run cell ด้านล่างทีละช่อง.",
+        "",
+    ]
+    for key in SPEC_VISUAL_KEYS.get(slug, ("cover", "overview")):
+        alt_text, path = VISUAL_ASSETS[key]
+        lines.append(f"![{alt_text}]({path})")
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 def markdown_cell(source: str) -> dict:
@@ -349,21 +381,25 @@ def notebook_intro(spec: NotebookSpec) -> str:
         f"- `{endpoint.method} {endpoint.path}` - {endpoint_label(endpoint)}"
         for endpoint in spec.endpoints
     )
-    return f"""
-    # {spec.title}
-
-    Learning goals:
-    - รู้ว่า endpoint ในหมวดนี้ใช้ทำอะไร
-    - เริ่มจาก offline sample response ก่อนใช้ credential จริง
-    - บันทึก raw JSON ทุก endpoint เพื่อกลับมาตรวจ response ได้
-    - แปลง response เป็น DataFrame หรือกราฟเมื่อเหมาะสม
-
-    Official sources:
-    {docs}
-
-    Endpoints covered:
-    {endpoints}
-    """
+    return "\n".join(
+        [
+            f"# {spec.title}",
+            "",
+            visual_markdown(spec.slug),
+            "",
+            "Learning goals:",
+            "- รู้ว่า endpoint ในหมวดนี้ใช้ทำอะไร",
+            "- เริ่มจาก offline sample response ก่อนใช้ credential จริง",
+            "- บันทึก raw JSON ทุก endpoint เพื่อกลับมาตรวจ response ได้",
+            "- แปลง response เป็น DataFrame หรือกราฟเมื่อเหมาะสม",
+            "",
+            "Official sources:",
+            docs,
+            "",
+            "Endpoints covered:",
+            endpoints,
+        ]
+    )
 
 
 def build_notebook(spec: NotebookSpec) -> dict:
@@ -883,6 +919,20 @@ README_TEMPLATE = """# Webull Thailand Endpoint Tutorial Notebooks
 - save raw JSON ลง `outputs/webull-th-endpoints/<notebook-slug>/`
 - ใช้ `api.webull.co.th` และ `HMAC-SHA256` เมื่อเปิด live mode
 - ไม่ฝัง App Key, App Secret, token, หรือ account id จริง
+
+## Visual Quick Start
+
+![3 ขั้นตอนเริ่มต้นใช้ Webull Open API](../docs/assets/webull-openapi-quickstart/01-cover.png)
+
+![ทำความเข้าใจกับ Webull OpenAPI](../docs/assets/webull-openapi-quickstart/02-api-overview.png)
+
+![วิธีขอ App Key และ App Secret](../docs/assets/webull-openapi-quickstart/03-app-key-secret.png)
+
+![วิธี Claim ข้อมูล Market Data LV1](../docs/assets/webull-openapi-quickstart/04-claim-market-data.png)
+
+![วิธีขอ Access Token](../docs/assets/webull-openapi-quickstart/05-access-token.png)
+
+![ตัวอย่างการใช้งาน API](../docs/assets/webull-openapi-quickstart/06-api-examples.png)
 
 ## Learning Order
 
