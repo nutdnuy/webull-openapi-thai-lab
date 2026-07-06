@@ -12,12 +12,14 @@ It is educational material, not a production trading system.
 - [Claude guide](CLAUDE.md): Claude-specific pointer to the shared guide.
 - [README](README.md): user-facing overview, quick start, and learning path.
 - [Learning path](docs/00-learning-path-th.md): Thai course sequence.
+- [Beginner notebook](notebooks/webull_th_beginner.ipynb): cell-by-cell AAPL close price tutorial for `api.webull.co.th`.
 
 ## Lessons
 
 - [API key setup](docs/01-api-key-setup-th.md)
 - [First API call](docs/02-first-call-th.md)
 - [Market data](docs/03-market-data-th.md)
+- [AAPL close notebook](notebooks/webull_th_beginner.ipynb)
 - [Order preview and guardrails](docs/04-order-preview-and-guardrails-th.md)
 - [AI-assisted Webull development](docs/05-ai-assisted-webull-dev-th.md)
 - [GitHub publishing checklist](docs/99-publishing-github-th.md)
@@ -30,6 +32,7 @@ It is educational material, not a production trading system.
 - [Market data helpers](src/webull_lab/market_data.py)
 - [Order helpers](src/webull_lab/orders.py)
 - [CLI](src/webull_lab/cli.py)
+- [Notebook builder](scripts/build_webull_th_beginner_notebook.py)
 
 ## Examples
 
@@ -50,4 +53,3 @@ It is educational material, not a production trading system.
 - Webull API Docs: https://developer.webull.com/apis/docs/
 - Webull official llms.txt: https://developer.webull.com/apis/llms.txt
 - Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
-

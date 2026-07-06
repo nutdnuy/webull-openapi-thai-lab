@@ -39,6 +39,14 @@ webull-lab doctor
 webull-lab account-list
 ```
 
+## Notebook สำหรับมือใหม่
+
+ถ้าต้องการเรียนแบบเห็น JSON และกราฟ `close` ของ AAPL ทีละ cell ให้เปิด:
+
+- [Webull Thailand Beginner Notebook](notebooks/webull_th_beginner.ipynb)
+
+Notebook นี้เริ่มจาก offline mode ก่อน จึง run ได้โดยไม่ต้องมี credential แล้วค่อยเปิด live mode เพื่อเรียก `https://api.webull.co.th/openapi/market-data/stock/bars` เมื่อพร้อม
+
 ## Learning Path
 
 1. [ภาพรวมคอร์ส](docs/00-learning-path-th.md)
@@ -56,6 +64,12 @@ webull-lab account-list
 - [AGENTS.md](AGENTS.md) - กติกาหลักสำหรับ Codex, Claude, และ agent tools
 - [CLAUDE.md](CLAUDE.md) - entrypoint สั้นสำหรับ Claude
 - [llms.txt](llms.txt) - แผนที่ไฟล์สำคัญของ repo สำหรับ LLM
+
+Regenerate notebook:
+
+```bash
+python scripts/build_webull_th_beginner_notebook.py
+```
 
 ## Official Sources
 

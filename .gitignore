@@ -4,6 +4,7 @@
 conf/token.txt
 token.txt
 .webull-token/
+.webull-token-th/
 *.pem
 *.key
 *.p12

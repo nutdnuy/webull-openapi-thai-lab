@@ -38,6 +38,8 @@ When an AI assistant receives only the GitHub link, read these files in order:
 - `README.md` - user-facing landing page and quick start.
 - `docs/` - Thai tutorial lessons.
 - `examples/` - small runnable examples for account, market data, and preview order.
+- `notebooks/webull_th_beginner.ipynb` - beginner AAPL close price notebook for `api.webull.co.th`.
+- `scripts/build_webull_th_beginner_notebook.py` - source builder for regenerating the notebook.
 - `src/webull_lab/config.py` - `.env` loading, UAT/prod endpoint selection, secret redaction.
 - `src/webull_lab/clients.py` - Webull SDK client factories.
 - `src/webull_lab/account.py` - read-only account helper functions.
@@ -90,4 +92,3 @@ The grep command should return no real credentials.
 - Webull API Docs: https://developer.webull.com/apis/docs/
 - Webull `llms.txt`: https://developer.webull.com/apis/llms.txt
 - Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
-

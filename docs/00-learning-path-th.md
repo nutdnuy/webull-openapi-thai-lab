@@ -30,13 +30,16 @@
 3. ดึง market data
    อ่าน `docs/03-market-data-th.md` แล้วรัน `webull-lab stock-snapshot AAPL` หรือ `python examples/02_market_data_snapshot.py` ปัจจุบัน CLI ตัวอย่างเป็น stock snapshot ส่วน helper ในโค้ดรองรับทั้ง snapshot และ historical bars
 
-4. Preview order พร้อม guardrails
+4. เปิด notebook สำหรับ AAPL close price
+   เปิด `notebooks/webull_th_beginner.ipynb` ถ้าต้องการเรียนแบบ cell-by-cell ตั้งแต่ endpoint, parameter, token, signature, raw JSON, save file และ plot ราคา `close` อย่างเดียวด้วยข้อมูล AAPL จาก `api.webull.co.th`
+
+5. Preview order พร้อม guardrails
    อ่าน `docs/04-order-preview-and-guardrails-th.md` แล้วรัน `webull-lab preview-stock-buy AAPL 100 1` หรือ `python examples/03_order_preview.py` เพื่อ preview เท่านั้น ไม่มี CLI command สำหรับส่ง live order
 
-5. ใช้ AI ช่วยพัฒนาอย่างปลอดภัย
+6. ใช้ AI ช่วยพัฒนาอย่างปลอดภัย
    อ่าน `docs/05-ai-assisted-webull-dev-th.md` เพื่อใช้ official docs และ `llms.txt` เป็น context ให้ AI assistant พร้อมข้อกำหนด fake-client tests และข้อห้ามเรื่อง secrets/live orders
 
-6. Publish ขึ้น GitHub
+7. Publish ขึ้น GitHub
    อ่าน `docs/99-publishing-github-th.md` เพื่อเช็ก secret, รัน tests, สร้าง repo และเปิด secret scanning ก่อนเผยแพร่
 
 ## หลักคิด
