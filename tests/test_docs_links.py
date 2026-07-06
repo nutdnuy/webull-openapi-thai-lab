@@ -17,11 +17,6 @@ COMMANDS = [
     "webull-lab preview-stock-buy AAPL 100 1",
 ]
 
-EXAMPLES = [
-    "examples/02_market_data_snapshot.py",
-    "examples/03_order_preview.py",
-]
-
 DEEP_LINKS = [
     "https://developer.webull.com/apis/docs/sdk/",
     "https://developer.webull.com/apis/docs/market-data-api/overview/",
@@ -64,13 +59,11 @@ def test_docs_mention_current_cli_commands():
         assert command in combined
 
 
-def test_example_paths_mentioned_in_docs_exist():
+def test_docs_do_not_reference_removed_examples_directory():
     root = Path(__file__).resolve().parents[1]
     combined = "\n".join((root / doc).read_text(encoding="utf-8") for doc in DOCS)
 
-    for example in EXAMPLES:
-        assert example in combined
-        assert (root / example).is_file()
+    assert "examples/" not in combined
 
 
 def test_docs_reference_relevant_official_deep_links():

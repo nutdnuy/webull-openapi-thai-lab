@@ -24,7 +24,7 @@ webull-lab stock-snapshot AAPL
 ## รันผ่านตัวอย่าง Python
 
 ```bash
-python examples/02_market_data_snapshot.py
+webull-lab stock-snapshot AAPL
 ```
 
 ตัวอย่างนี้ทำ flow เดียวกันแบบ Python script: โหลด `.env`, สร้าง data client, เรียก snapshot ของ `AAPL` แล้ว print JSON
@@ -47,6 +47,6 @@ Market data บางส่วนอาจขึ้นกับ permission, subs
 ## Checklist
 
 - เริ่มจาก `webull-lab stock-snapshot AAPL`
-- ถ้าต้อง debug ให้เทียบกับ `python examples/02_market_data_snapshot.py`
+- ถ้าต้อง debug ให้เทียบกับ `notebooks/01_stock_market_data.ipynb`
 - อย่า hard-code app key หรือ app secret ใน script
 - อย่าเขียน loop ยิง API ถี่ ๆ โดยไม่อ่าน Webull rate limit docs

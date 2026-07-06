@@ -22,7 +22,7 @@ webull-lab preview-stock-buy AAPL 100 1
 ถ้าต้องการรันผ่าน Python example:
 
 ```bash
-python examples/03_order_preview.py
+webull-lab preview-stock-buy AAPL 100 1
 ```
 
 ทั้งสองทางใช้ preview endpoint เท่านั้น ไม่ใช่การส่งคำสั่งซื้อขายจริง

@@ -37,7 +37,6 @@ When an AI assistant receives only the GitHub link, read these files in order:
 
 - `README.md` - user-facing landing page and quick start.
 - `docs/` - Thai tutorial lessons.
-- `examples/` - small runnable examples for account, market data, and preview order.
 - `notebooks/webull_th_beginner.ipynb` - beginner AAPL close price notebook for `api.webull.co.th`.
 - `notebooks/README.md` - endpoint-split notebook learning order.
 - `notebooks/00_auth_token.ipynb` through `notebooks/05_order_preview_guardrails.ipynb` - endpoint-focused notebooks with offline samples and guarded live mode.

@@ -28,7 +28,7 @@
    อ่าน `docs/02-first-call-th.md` แล้วรัน `webull-lab doctor` ตามด้วย `webull-lab account-list` เพื่อยืนยันว่าเชื่อมต่อ UAT endpoint `us-openapi-alb.uat.webullbroker.com` ได้
 
 3. ดึง market data
-   อ่าน `docs/03-market-data-th.md` แล้วรัน `webull-lab stock-snapshot AAPL` หรือ `python examples/02_market_data_snapshot.py` ปัจจุบัน CLI ตัวอย่างเป็น stock snapshot ส่วน helper ในโค้ดรองรับทั้ง snapshot และ historical bars
+   อ่าน `docs/03-market-data-th.md` แล้วรัน `webull-lab stock-snapshot AAPL` หรือเปิด `notebooks/01_stock_market_data.ipynb` ปัจจุบัน CLI ตัวอย่างเป็น stock snapshot ส่วน notebook รองรับ endpoint market data หลายแบบ
 
 4. เปิด notebook สำหรับ AAPL close price
    เปิด `notebooks/webull_th_beginner.ipynb` ถ้าต้องการเรียนแบบ cell-by-cell ตั้งแต่ endpoint, parameter, token, signature, raw JSON, save file และ plot ราคา `close` อย่างเดียวด้วยข้อมูล AAPL จาก `api.webull.co.th`
@@ -37,7 +37,7 @@
    เปิด `notebooks/README.md` แล้วเรียนตามลำดับ `00_auth_token.ipynb`, `01_stock_market_data.ipynb`, `02_screener_fundamentals.ipynb`, `03_watchlist_readonly.ipynb`, `04_account_assets_order_query.ipynb`, และ `05_order_preview_guardrails.ipynb`. ทุกไฟล์เริ่มจาก offline sample และต้องเปิด `WEBULL_TUTORIAL_LIVE=1` เองเมื่อพร้อมยิง API จริง
 
 6. Preview order พร้อม guardrails
-   อ่าน `docs/04-order-preview-and-guardrails-th.md` แล้วรัน `webull-lab preview-stock-buy AAPL 100 1` หรือ `python examples/03_order_preview.py` เพื่อ preview เท่านั้น ไม่มี CLI command สำหรับส่ง live order
+   อ่าน `docs/04-order-preview-and-guardrails-th.md` แล้วรัน `webull-lab preview-stock-buy AAPL 100 1` หรือเปิด `notebooks/05_order_preview_guardrails.ipynb` เพื่อ preview เท่านั้น ไม่มี CLI command สำหรับส่ง live order
 
 7. ใช้ AI ช่วยพัฒนาอย่างปลอดภัย
    อ่าน `docs/05-ai-assisted-webull-dev-th.md` เพื่อใช้ official docs และ `llms.txt` เป็น context ให้ AI assistant พร้อมข้อกำหนด fake-client tests และข้อห้ามเรื่อง secrets/live orders
