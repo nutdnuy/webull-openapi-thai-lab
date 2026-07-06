@@ -42,6 +42,7 @@ REQUIRED_TERMS = (
     "api.webull.co.th",
     "WEBULL_TUTORIAL_LIVE",
 )
+CODE_EXPLANATION_MARKER = "### โค้ดช่องถัดไปทำอะไร"
 WEBULL_CREDENTIAL_ENV_VARS = (
     "WEBULL_APP_KEY",
     "WEBULL_APP_SECRET",
@@ -130,10 +131,28 @@ def assert_notebook_clean_and_compile(
             ast.parse(cell_source(cell), filename=f"{source_name} cell {index}")
 
 
+def assert_code_cells_have_plain_thai_explanations(notebook: dict) -> None:
+    cells = notebook["cells"]
+    code_cell_count = sum(1 for cell in cells if cell["cell_type"] == "code")
+    explanation_count = notebook_text(notebook).count(CODE_EXPLANATION_MARKER)
+    assert explanation_count == code_cell_count
+
+    for index, cell in enumerate(cells):
+        if cell["cell_type"] != "code":
+            continue
+        assert index > 0, f"Code cell {index} has no preceding markdown explanation"
+        assert cells[index - 1]["cell_type"] != "code"
+        previous_source = cell_source(cells[index - 1])
+        assert cells[index - 1]["cell_type"] == "markdown"
+        assert CODE_EXPLANATION_MARKER in previous_source
+        assert previous_source.count("- ") >= 3
+
+
 def assert_notebook_contract(notebook: dict, raw: str, source_name: str) -> None:
     assert_notebook_shape(notebook)
     assert_beginner_learning_flow(notebook)
     assert_notebook_clean_and_compile(notebook, raw, source_name)
+    assert_code_cells_have_plain_thai_explanations(notebook)
 
 
 def test_builder_creates_beginner_notebook(tmp_path):
@@ -163,6 +182,11 @@ def test_notebook_cells_are_clean_and_compile():
     notebook = load_notebook()
     raw = NOTEBOOK.read_text(encoding="utf-8")
     assert_notebook_clean_and_compile(notebook, raw)
+
+
+def test_code_cells_have_plain_thai_explanations():
+    notebook = load_notebook()
+    assert_code_cells_have_plain_thai_explanations(notebook)
 
 
 def test_notebook_executes_top_to_bottom_offline(tmp_path, monkeypatch):

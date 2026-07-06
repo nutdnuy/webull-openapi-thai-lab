@@ -69,6 +69,7 @@ FORBIDDEN_LIVE_ORDER_PATHS = (
     "/openapi/trade/order/replace",
     "/openapi/trade/order/cancel",
 )
+CODE_EXPLANATION_MARKER = "### โค้ดช่องถัดไปทำอะไร"
 
 HARDCODED_APP_SECRET_PATTERN = re.compile(
     r"""(?im)^\s*(?:os\.environ\[\s*["']WEBULL_APP_SECRET["']\s*\]|(?:WEBULL_)?APP_SECRET)\s*=\s*["'][^"']+["']"""
@@ -97,6 +98,24 @@ def code_text(notebook: dict) -> str:
     return "\n".join(
         cell_source(cell) for cell in notebook["cells"] if cell["cell_type"] == "code"
     )
+
+
+def assert_code_cells_have_plain_thai_explanations(notebook: dict, notebook_name: str) -> None:
+    cells = notebook["cells"]
+    code_cell_count = sum(1 for cell in cells if cell["cell_type"] == "code")
+    explanation_count = notebook_text(notebook).count(CODE_EXPLANATION_MARKER)
+    assert explanation_count == code_cell_count
+
+    for index, cell in enumerate(cells):
+        if cell["cell_type"] != "code":
+            continue
+        assert index > 0, f"{notebook_name} code cell {index} has no explanation"
+        assert cells[index - 1]["cell_type"] != "code"
+        previous = cells[index - 1]
+        previous_source = cell_source(previous)
+        assert previous["cell_type"] == "markdown"
+        assert CODE_EXPLANATION_MARKER in previous_source
+        assert previous_source.count("- ") >= 3
 
 
 def endpoint_notebook_paths() -> list[Path]:
@@ -146,6 +165,8 @@ def test_endpoint_notebooks_have_expected_contract():
 
         for forbidden_path in FORBIDDEN_LIVE_ORDER_PATHS:
             assert forbidden_path not in code
+
+        assert_code_cells_have_plain_thai_explanations(notebook, notebook_path.name)
 
         for index, cell in enumerate(notebook["cells"]):
             if cell["cell_type"] == "code":

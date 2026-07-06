@@ -377,15 +377,37 @@ def build_notebook(spec: NotebookSpec) -> dict:
 
             ค่า default คือ offline mode (`WEBULL_TUTORIAL_LIVE=0`) จึง run ได้โดยไม่ต้องมี credential.
             ถ้าจะยิง API จริง ให้ตั้งค่า `.env.webull-th` หรือ `.env` แล้วเปิด `WEBULL_TUTORIAL_LIVE=1`.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - กำหนดชื่อ notebook เพื่อใช้ตั้งชื่อโฟลเดอร์ output
+            - สร้างรายการ endpoint ที่ notebook นี้จะเรียก เช่น method, path, parameter และ body
+            - ยังไม่ยิง API จริง เป็นแค่การเตรียมแผนที่ endpoint ให้ cell ถัด ๆ ไปใช้ร่วมกัน
             """
         ),
         code_cell(endpoint_table_code(spec)),
+        markdown_cell(
+            """
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - import library ที่ใช้กับ API, JSON, DataFrame และไฟล์ output
+            - ตั้งค่า `BASE_URL`, host ไทย, live/offline mode และโฟลเดอร์ output
+            - อ่านค่า credential จาก `.env.webull-th` หรือ `.env` แต่ไม่พิมพ์ secret ออกมาตรง ๆ
+            - สร้าง helper สำหรับ redact ข้อมูลส่วนตัว, save JSON และ export CSV
+            """
+        ),
         code_cell(COMMON_SETUP_CODE),
         markdown_cell(
             f"""
             ## Endpoint Map
 
             หมวดนี้โฟกัส: {spec.focus}
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - แสดง endpoint ทั้งหมดใน notebook นี้เป็นตารางอ่านง่าย
+            - ใช้ตรวจเร็ว ๆ ว่าแต่ละ endpoint เป็น `GET` หรือ `POST`
+            - ช่วยให้เห็น path จริงก่อนเริ่มเรียก API หรืออ่าน sample response
             """
         ),
         code_cell(
@@ -409,6 +431,12 @@ def build_notebook(spec: NotebookSpec) -> dict:
 
             Cell ถัดไปคือ sample response สำหรับโหมด offline. โครงสร้างนี้ใช้เพื่อสอนการอ่าน JSON,
             ไม่ใช่ข้อมูลตลาดแบบ real-time.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - สร้างตัวแปร `SAMPLE_RESPONSES` เป็นข้อมูลจำลองสำหรับทุก endpoint
+            - ทำให้ run notebook ได้ทันที แม้ยังไม่มี App Key, App Secret หรือ token
+            - ใช้ฝึกอ่านโครงสร้าง JSON ก่อนค่อยเปิด live mode
             """
         ),
         code_cell(samples_code(spec)),
@@ -418,6 +446,13 @@ def build_notebook(spec: NotebookSpec) -> dict:
 
             Helper นี้สร้าง signed request สำหรับ live mode ด้วย `HMAC-SHA256`.
             ใน offline mode จะคืน sample response ทันที.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - สร้าง header ที่ Webull ต้องใช้ เช่น `x-app-key`, timestamp, nonce และ signature
+            - รวม query/body ให้เป็น request ที่ส่งด้วย `requests.request`
+            - ถ้าอยู่ offline mode จะไม่ยิง internet และคืน sample response แทน
+            - ถ้า live API error จะ raise error พร้อม status code และ payload เพื่อ debug
             """
         ),
         code_cell(REQUEST_HELPER_CODE),
@@ -426,10 +461,27 @@ def build_notebook(spec: NotebookSpec) -> dict:
             ## Run Endpoints
 
             ทุก response จะถูก redacted แล้ว save เป็น JSON ใน `OUTPUT_DIR`.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - วนเรียก endpoint ทุกตัวใน `ENDPOINTS`
+            - แทน placeholder เช่น account id ด้วยค่าจาก env หรือ sample
+            - redact token/account id ก่อนเก็บใน `results`
+            - save raw JSON แยกเป็นไฟล์เพื่อให้เปิดดูย้อนหลังหรือแคปหน้าจอได้
             """
         ),
         code_cell(run_endpoints_code(spec)),
-        markdown_cell("## Inspect and Export"),
+        markdown_cell(
+            """
+            ## Inspect and Export
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - นำผลลัพธ์จาก `results` มาแปลงเป็นตาราง, CSV หรือกราฟตามชนิด endpoint
+            - ช่วยให้คนทั่วไปอ่าน response ได้ง่ายกว่า raw JSON
+            - output สำคัญจะถูกเก็บไว้ใน `OUTPUT_DIR` เพื่อกลับมาเปิดดูได้ภายหลัง
+            """
+        ),
         code_cell(spec.analysis_code),
         markdown_cell(
             f"""

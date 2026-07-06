@@ -106,6 +106,14 @@ def build_notebook() -> dict:
 
             ค่า default คือ offline mode (`WEBULL_TUTORIAL_LIVE=0`)
             เพื่อให้มือใหม่ run notebook ได้ทันทีโดยไม่ต้องมี key.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - import library ที่จำเป็น เช่น JSON, request, DataFrame และกราฟ
+            - ตั้งค่า host ไทย `api.webull.co.th` และ endpoint สำหรับ AAPL historical bars
+            - อ่านว่า notebook อยู่ใน offline mode หรือ live mode
+            - สร้างโฟลเดอร์ output สำหรับเก็บ JSON และ HTML chart
+            - ลอง import Webull SDK; ถ้าไม่มี SDK ก็ยัง run offline mode ได้
             """
         ),
         code_cell(
@@ -160,6 +168,13 @@ def build_notebook() -> dict:
             ```
 
             อย่าเขียน secret ลง notebook โดยตรง.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - อ่านค่า credential จาก `.env.webull-th` หรือ `.env`
+            - สร้าง helper `redact` เพื่อโชว์ค่าแบบปิดบางส่วน ไม่พิมพ์ secret เต็ม ๆ
+            - เก็บ `APP_KEY`, `APP_SECRET` และ token directory ไว้ใช้ใน cell ถัดไป
+            - ถ้าเปิด live mode แต่ยังไม่มี key/secret จะหยุดทันทีเพื่อกัน request ผิดพลาด
             """
         ),
         code_cell(
@@ -216,6 +231,13 @@ def build_notebook() -> dict:
 
             ถ้าเรียก `api.webull.co.th` โดย sign request อย่างเดียวแต่ไม่มี token มักเจอ `INVALID_TOKEN`.
             Offline mode จะใช้ token จำลองเพื่อให้เรียน flow ได้ก่อน.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - ถ้าอยู่ offline mode จะคืน token จำลองชื่อ `offline-demo-token`
+            - ถ้าอยู่ live mode จะใช้ Webull SDK ขอหรืออ่าน access token จาก token directory
+            - ตรวจว่า token มีจริงก่อนนำไปใช้ใน request
+            - แสดง token แบบ redacted เพื่อให้รู้ว่ามีค่าแล้วโดยไม่เผย token จริง
             """
         ),
         code_cell(
@@ -256,6 +278,13 @@ def build_notebook() -> dict:
             - ใส่ `host` ใน string ที่นำไป sign
             - ส่ง `x-access-token` เป็น header หลัง sign แล้ว
             - ไม่ส่ง app secret เป็น header
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - สร้างฟังก์ชัน `build_signature_headers` สำหรับทำ signed request
+            - รวม parameter, host, app key, timestamp และ nonce ให้ตรงรูปแบบที่ Webull ใช้ตรวจ
+            - ใช้ `app_secret` คำนวณ HMAC signature แต่ไม่ส่ง `app_secret` ไปใน header
+            - คืน header ที่จะใช้กับ `requests.get` ใน cell ดึงราคา
             """
         ),
         code_cell(
@@ -331,6 +360,14 @@ def build_notebook() -> dict:
             ```
 
             Offline mode ใช้ sample response รูปร่างเดียวกับ Webull response.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - เตรียม sample AAPL bars สำหรับ offline mode
+            - สร้างฟังก์ชัน `get_stock_bars` ที่ใช้ parameter เช่น symbol, category, timespan และ count
+            - ถ้า offline จะคืน sample ทันที; ถ้า live จะ sign request แล้วเรียก `api.webull.co.th`
+            - ตรวจว่า response เป็น list ของ bars ก่อนส่งต่อให้ cell ถัดไป
+            - แสดงจำนวน rows พร้อมแถวแรกและแถวสุดท้ายเพื่อเช็กข้อมูลเร็ว ๆ
             """
         ),
         code_cell(
@@ -483,6 +520,13 @@ def build_notebook() -> dict:
             ## Step 6 - Save Raw JSON
 
             Save raw response ก่อนแปลงข้อมูล เพื่อให้ย้อนดู response เดิมได้.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - save response ดิบเป็น `aapl-bars-raw.json`
+            - แปลง JSON เป็น `pandas.DataFrame`
+            - เปลี่ยน `time` เป็นวันที่ และแปลง open/high/low/close/volume เป็นตัวเลข
+            - sort วันที่จากเก่าไปใหม่ แล้วสรุปจำนวน rows, ช่วงวันที่ และ close ล่าสุด
             """
         ),
         code_cell(
@@ -514,6 +558,13 @@ def build_notebook() -> dict:
             ## Step 7 - Plot Close
 
             เริ่มจากกราฟ `close` อย่างเดียว เพราะอ่านง่ายที่สุดสำหรับมือใหม่.
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - สร้างกราฟเส้นจากคอลัมน์ `close`
+            - ใช้แกน X เป็นวันที่ และแกน Y เป็นราคาปิด
+            - save กราฟเป็น HTML เพื่อเปิดดูหรือแชร์ต่อได้
+            - แสดงกราฟใน notebook ทันทีหลัง run cell
             """
         ),
         code_cell(
@@ -551,6 +602,12 @@ def build_notebook() -> dict:
             1. เปลี่ยน `count=120` เป็น `count=20` แล้วดูจำนวน rows ที่ได้
             2. เปิด live mode แล้วลองดึง symbol อื่นที่ account มี permission
             3. เพิ่ม EMA 22 จาก `data["close"]` แล้ว plot ทับกับ close
+
+            ### โค้ดช่องถัดไปทำอะไร
+
+            - copy ตารางราคาเป็นตัวแปรใหม่เพื่อไม่แก้ `data` ต้นฉบับ
+            - คำนวณ EMA 22 จากราคาปิด
+            - แสดง 5 แถวท้ายเพื่อดูว่า `ema22` ถูกเพิ่มเข้ามาแล้ว
             """
         ),
         code_cell(
