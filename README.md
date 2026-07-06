@@ -41,11 +41,21 @@ webull-lab account-list
 
 ## Notebook สำหรับมือใหม่
 
-ถ้าต้องการเรียนแบบเห็น JSON และกราฟ `close` ของ AAPL ทีละ cell ให้เปิด:
+ถ้าต้องการเริ่มจากตัวอย่างเดียวก่อน ให้เปิด:
 
 - [Webull Thailand Beginner Notebook](notebooks/webull_th_beginner.ipynb)
 
 Notebook นี้เริ่มจาก offline mode ก่อน จึง run ได้โดยไม่ต้องมี credential แล้วค่อยเปิด live mode เพื่อเรียก `https://api.webull.co.th/openapi/market-data/stock/bars` เมื่อพร้อม
+
+ถ้าต้องการเรียนแยกตาม endpoint ให้เริ่มจาก:
+
+- [Endpoint Tutorial Notebooks](notebooks/README.md)
+- [Auth Token](notebooks/00_auth_token.ipynb)
+- [Stock Market Data](notebooks/01_stock_market_data.ipynb)
+- [Screener and Fundamentals](notebooks/02_screener_fundamentals.ipynb)
+- [Watchlist Read-only](notebooks/03_watchlist_readonly.ipynb)
+- [Account, Assets, and Order Query](notebooks/04_account_assets_order_query.ipynb)
+- [Order Preview Guardrails](notebooks/05_order_preview_guardrails.ipynb)
 
 ## Learning Path
 
@@ -69,6 +79,7 @@ Regenerate notebook:
 
 ```bash
 python scripts/build_webull_th_beginner_notebook.py
+python scripts/build_endpoint_notebooks.py
 ```
 
 ## Official Sources

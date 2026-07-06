@@ -13,6 +13,7 @@ It is educational material, not a production trading system.
 - [README](README.md): user-facing overview, quick start, and learning path.
 - [Learning path](docs/00-learning-path-th.md): Thai course sequence.
 - [Beginner notebook](notebooks/webull_th_beginner.ipynb): cell-by-cell AAPL close price tutorial for `api.webull.co.th`.
+- [Endpoint notebook index](notebooks/README.md): learning order for endpoint-split notebooks.
 
 ## Lessons
 
@@ -20,6 +21,7 @@ It is educational material, not a production trading system.
 - [First API call](docs/02-first-call-th.md)
 - [Market data](docs/03-market-data-th.md)
 - [AAPL close notebook](notebooks/webull_th_beginner.ipynb)
+- [Endpoint notebooks](notebooks/README.md)
 - [Order preview and guardrails](docs/04-order-preview-and-guardrails-th.md)
 - [AI-assisted Webull development](docs/05-ai-assisted-webull-dev-th.md)
 - [GitHub publishing checklist](docs/99-publishing-github-th.md)
@@ -33,6 +35,7 @@ It is educational material, not a production trading system.
 - [Order helpers](src/webull_lab/orders.py)
 - [CLI](src/webull_lab/cli.py)
 - [Notebook builder](scripts/build_webull_th_beginner_notebook.py)
+- [Endpoint notebook builder](scripts/build_endpoint_notebooks.py)
 
 ## Examples
 

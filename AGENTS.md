@@ -39,7 +39,10 @@ When an AI assistant receives only the GitHub link, read these files in order:
 - `docs/` - Thai tutorial lessons.
 - `examples/` - small runnable examples for account, market data, and preview order.
 - `notebooks/webull_th_beginner.ipynb` - beginner AAPL close price notebook for `api.webull.co.th`.
+- `notebooks/README.md` - endpoint-split notebook learning order.
+- `notebooks/00_auth_token.ipynb` through `notebooks/05_order_preview_guardrails.ipynb` - endpoint-focused notebooks with offline samples and guarded live mode.
 - `scripts/build_webull_th_beginner_notebook.py` - source builder for regenerating the notebook.
+- `scripts/build_endpoint_notebooks.py` - source builder for regenerating endpoint-split notebooks.
 - `src/webull_lab/config.py` - `.env` loading, UAT/prod endpoint selection, secret redaction.
 - `src/webull_lab/clients.py` - Webull SDK client factories.
 - `src/webull_lab/account.py` - read-only account helper functions.
