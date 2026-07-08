@@ -947,6 +947,11 @@ README_TEMPLATE = """# Webull Thailand Endpoint Tutorial Notebooks
 
 ถ้าต้องการเริ่มจากตัวอย่างเดียวก่อน ให้เปิด
 [Webull Thailand Beginner Notebook](webull_th_beginner.ipynb).
+
+## Quantopian-Style Research Path
+
+ถ้าต้องการ notebook แนว Quantopian lecture ที่ใช้ Webull historical bars เป็น
+data source ให้เปิด [Webull Quantopian-Style Research Notebooks](quantopian_style/README.md).
 """
 
 

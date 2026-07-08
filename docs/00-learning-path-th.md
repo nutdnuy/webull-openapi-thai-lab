@@ -16,6 +16,7 @@
 - ตรวจ configuration ด้วย `webull-lab doctor`
 - เรียกบัญชี UAT ด้วย `webull-lab account-list`
 - ดึง snapshot ของหุ้นด้วย `webull-lab stock-snapshot AAPL`
+- เปิด notebook แนว Quantopian-style เพื่อทำ research จาก Webull historical bars
 - preview limit buy order ด้วย `webull-lab preview-stock-buy AAPL 100 1`
 - ใช้ Webull `llms.txt` ให้ AI assistant ช่วย dev โดยยังบังคับ fake-client tests, ไม่มี hard-coded secrets และไม่มี live order จาก CLI
 
@@ -36,13 +37,16 @@
 5. เรียนแยกตาม endpoint
    เปิด `notebooks/README.md` แล้วเรียนตามลำดับ `00_auth_token.ipynb`, `01_stock_market_data.ipynb`, `02_screener_fundamentals.ipynb`, `03_watchlist_readonly.ipynb`, `04_account_assets_order_query.ipynb`, และ `05_order_preview_guardrails.ipynb`. ทุกไฟล์เริ่มจาก offline sample และต้องเปิด `WEBULL_TUTORIAL_LIVE=1` เองเมื่อพร้อมยิง API จริง
 
-6. Preview order พร้อม guardrails
+6. เรียน quant research แบบ Quantopian-style ด้วย Webull bars
+   เปิด `notebooks/quantopian_style/README.md` เพื่อเรียน research notebook จาก Webull historical bars: research environment, plotting/returns, autocorrelation, regression beta, pairs trading, factor ranking, portfolio VaR/CVaR, liquidity/slippage และ overfitting guardrails. ทุกไฟล์เริ่มจาก offline sample และเปิด live mode ได้ด้วย `WEBULL_QUANTOPIAN_LIVE=1` เมื่อ credential และ market data permission พร้อม
+
+7. Preview order พร้อม guardrails
    อ่าน `docs/04-order-preview-and-guardrails-th.md` แล้วรัน `webull-lab preview-stock-buy AAPL 100 1` หรือเปิด `notebooks/05_order_preview_guardrails.ipynb` เพื่อ preview เท่านั้น ไม่มี CLI command สำหรับส่ง live order
 
-7. ใช้ AI ช่วยพัฒนาอย่างปลอดภัย
+8. ใช้ AI ช่วยพัฒนาอย่างปลอดภัย
    อ่าน `docs/05-ai-assisted-webull-dev-th.md` เพื่อใช้ official docs และ `llms.txt` เป็น context ให้ AI assistant พร้อมข้อกำหนด fake-client tests และข้อห้ามเรื่อง secrets/live orders
 
-8. Publish ขึ้น GitHub
+9. Publish ขึ้น GitHub
    อ่าน `docs/99-publishing-github-th.md` เพื่อเช็ก secret, รัน tests, สร้าง repo และเปิด secret scanning ก่อนเผยแพร่
 
 ## หลักคิด

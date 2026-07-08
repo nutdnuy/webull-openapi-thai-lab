@@ -73,6 +73,11 @@ Notebook นี้เริ่มจาก offline mode ก่อน จึง r
 - [Account, Assets, and Order Query](notebooks/04_account_assets_order_query.ipynb)
 - [Order Preview Guardrails](notebooks/05_order_preview_guardrails.ipynb)
 
+ถ้าต้องการเรียนแนว Quantopian research notebook แต่ใช้ Webull historical bars
+เป็น data source ให้เปิด:
+
+- [Webull Quantopian-Style Research Notebooks](notebooks/quantopian_style/README.md)
+
 ## Learning Path
 
 1. [ภาพรวมคอร์ส](docs/00-learning-path-th.md)
@@ -96,6 +101,7 @@ Regenerate notebook:
 ```bash
 python scripts/build_webull_th_beginner_notebook.py
 python scripts/build_endpoint_notebooks.py
+python scripts/build_quantopian_style_notebooks.py
 ```
 
 ## Official Sources
