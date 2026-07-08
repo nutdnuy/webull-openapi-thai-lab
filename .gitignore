@@ -13,6 +13,7 @@ token.txt
 data/raw/
 data/private/
 outputs/
+site/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

@@ -44,6 +44,31 @@ export WEBULL_QUANTOPIAN_OUTPUT_DIR=outputs/quantopian-style
 
 จากนั้นตั้ง `.env` ตาม README หลักของ repo แล้วเปิด notebook ที่ต้องการ.
 
+## Run Results Workflow
+
+Local offline run:
+
+```bash
+WEBULL_QUANTOPIAN_LIVE=0 python scripts/run_quantopian_style_workflow.py \
+  --notebook-dir notebooks/quantopian_style \
+  --output-dir site/quantopian-style/results
+
+python scripts/build_quantopian_style_dashboard.py \
+  --results-dir site/quantopian-style/results \
+  --site-dir site
+```
+
+Open `site/quantopian-style/index.html` to inspect the generated dashboard.
+
+GitHub run:
+
+1. Open Actions > Quantopian-Style Results.
+2. Click Run workflow.
+3. Wait for the deploy job to finish.
+4. Open `https://nutdnuy.github.io/webull-openapi-thai-lab/quantopian-style/`.
+
+The workflow forces `WEBULL_QUANTOPIAN_LIVE=0`, so it runs deterministic offline Webull-style data and does not use App Key, App Secret, token, account id, or order endpoints.
+
 ## Official Sources
 
 - Webull Market Data Getting Started: https://developer.webull.com/apis/docs/market-data-api/getting-started

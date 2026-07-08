@@ -1,6 +1,7 @@
 # Webull OpenAPI Thai Lab
 
 [![CI](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/ci.yml)
+[![Quantopian-Style Results](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/quantopian-style-results.yml/badge.svg)](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/quantopian-style-results.yml)
 
 คู่มือและตัวอย่างโค้ดภาษา Python สำหรับเรียนรู้ Webull OpenAPI แบบปลอดภัย ตั้งแต่การสร้าง API Key, เรียกบัญชีใน UAT, ดึง Market Data, preview order และวาง guardrail ก่อนแตะคำสั่งซื้อขายจริง
 
@@ -77,6 +78,16 @@ Notebook นี้เริ่มจาก offline mode ก่อน จึง r
 เป็น data source ให้เปิด:
 
 - [Webull Quantopian-Style Research Notebooks](notebooks/quantopian_style/README.md)
+
+## Quantopian-Style Results Workflow
+
+GitHub Actions รันชุด Webull Quantopian-style notebooks แบบ offline-safe แล้ว publish เป็น static dashboard ผ่าน GitHub Pages:
+
+- Workflow: [Quantopian-Style Results](https://github.com/nutdnuy/webull-openapi-thai-lab/actions/workflows/quantopian-style-results.yml)
+- Results dashboard: `https://nutdnuy.github.io/webull-openapi-thai-lab/quantopian-style/`
+- Raw artifact: เปิด workflow run ล่าสุด แล้วดาวน์โหลด artifact ชื่อ `quantopian-style-results`
+
+ค่า CI ใช้ `WEBULL_QUANTOPIAN_LIVE=0` เสมอ จึงไม่มีการเรียก live Webull credential หรือ trading endpoint.
 
 ## Learning Path
 

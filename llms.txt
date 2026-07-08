@@ -39,6 +39,9 @@ It is educational material, not a production trading system.
 - [Notebook builder](scripts/build_webull_th_beginner_notebook.py)
 - [Endpoint notebook builder](scripts/build_endpoint_notebooks.py)
 - [Quantopian-style notebook builder](scripts/build_quantopian_style_notebooks.py)
+- [Quantopian-style results runner](scripts/run_quantopian_style_workflow.py): executes the Quantopian-style notebooks offline and writes static result artifacts.
+- [Quantopian-style dashboard builder](scripts/build_quantopian_style_dashboard.py): builds the GitHub Pages dashboard from generated Quantopian-style results.
+- [Quantopian-style results workflow](.github/workflows/quantopian-style-results.yml): GitHub Actions workflow that runs notebooks, uploads raw artifacts, and deploys GitHub Pages.
 
 ## Safety Summary
 
