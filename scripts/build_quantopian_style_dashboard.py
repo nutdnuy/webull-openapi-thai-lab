@@ -68,6 +68,7 @@ def build(results_dir: Path, site_dir: Path) -> None:
             f"<td>{artifact_links(item, slug, 'json_files')}</td>"
             f"<td>{artifact_links(item, slug, 'html_files')}</td>"
             f"<td>{artifact_links(item, slug, 'csv_files')}</td>"
+            f'<td><a href="results/{html.escape(item["test_result"])}">test_result.json</a></td>'
             f'<td><a href="results/{slug}/stdout.txt">stdout</a></td>'
             "</tr>"
         )
@@ -78,11 +79,12 @@ def build(results_dir: Path, site_dir: Path) -> None:
     )
     output_links = (
         '<a href="results/manifest.json">manifest.json</a> | '
+        '<a href="results/notebook-test-results.json">notebook-test-results.json</a> | '
         '<a href="results-summary.json">results-summary.json</a>'
     )
     table_head = (
         "<thead><tr><th>Notebook</th><th>Status</th><th>Seconds</th>"
-        "<th>JSON</th><th>Charts</th><th>CSV</th><th>Log</th></tr></thead>"
+        "<th>JSON</th><th>Charts</th><th>CSV</th><th>Test Result</th><th>Log</th></tr></thead>"
     )
 
     research_html = f"""<!doctype html>
@@ -152,6 +154,8 @@ def build(results_dir: Path, site_dir: Path) -> None:
                 "json_files": item["json_files"],
                 "html_files": item["html_files"],
                 "csv_files": item["csv_files"],
+                "test_result": item["test_result"],
+                "code_cell_count": item["code_cell_count"],
             }
             for item in manifest["notebooks"]
         ],

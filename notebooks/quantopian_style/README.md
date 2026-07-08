@@ -60,6 +60,11 @@ python scripts/build_quantopian_style_dashboard.py \
 
 Open `site/quantopian-style/index.html` to inspect the generated dashboard.
 
+The workflow stores test output in two places:
+
+- `site/quantopian-style/results/notebook-test-results.json` summarizes every notebook.
+- `site/quantopian-style/results/<notebook-slug>/test_result.json` stores the per-notebook execution result, artifact list, and checks.
+
 GitHub run:
 
 1. Open Actions > Quantopian-Style Results.

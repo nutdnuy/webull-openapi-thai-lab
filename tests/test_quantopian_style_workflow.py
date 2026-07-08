@@ -57,7 +57,14 @@ def test_quantopian_style_workflow_runner_executes_all_notebooks(tmp_path):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["live_mode"] is False
     assert manifest["notebook_count"] == len(EXPECTED_NOTEBOOKS)
+    assert manifest["test_results"] == "notebook-test-results.json"
     assert [item["notebook"] for item in manifest["notebooks"]] == EXPECTED_NOTEBOOKS
+    test_results = json.loads(
+        (output_dir / "notebook-test-results.json").read_text(encoding="utf-8")
+    )
+    assert test_results["passed_count"] == len(EXPECTED_NOTEBOOKS)
+    assert test_results["failed_count"] == 0
+    assert [item["notebook"] for item in test_results["tests"]] == EXPECTED_NOTEBOOKS
 
     for item in manifest["notebooks"]:
         notebook_output = output_dir / item["slug"]
@@ -66,6 +73,14 @@ def test_quantopian_style_workflow_runner_executes_all_notebooks(tmp_path):
         assert item["json_files"], item["slug"]
         assert item["html_files"], item["slug"]
         assert (notebook_output / "stdout.txt").is_file()
+        assert item["test_result"] == f"{item['slug']}/test_result.json"
+        assert item["code_cell_count"] >= 3
+        test_result = json.loads((output_dir / item["test_result"]).read_text(encoding="utf-8"))
+        assert test_result["notebook"] == item["notebook"]
+        assert test_result["passed"] is True
+        assert test_result["live_mode"] is False
+        assert test_result["generated_artifacts"]["html_files"]
+        assert test_result["checks"][0]["name"] == "offline_notebook_execution"
 
 
 def test_quantopian_style_workflow_runner_removes_stale_artifacts(tmp_path):
@@ -141,6 +156,8 @@ def test_quantopian_style_dashboard_builds_static_site(tmp_path):
     assert "Webull Quantopian-Style Results" in html
     assert "01_research_environment.ipynb" in html
     assert "manifest.json" in html
+    assert "notebook-test-results.json" in html
+    assert "test_result.json" in html
     assert "live Webull trading calls: none" in html
     assert "offline_webull_style_prices.csv" in html
 
@@ -148,6 +165,8 @@ def test_quantopian_style_dashboard_builds_static_site(tmp_path):
     assert summary["passed_count"] == len(EXPECTED_NOTEBOOKS)
     assert summary["failed_count"] == 0
     assert summary["notebooks"][0]["csv_files"] == ["offline_webull_style_prices.csv"]
+    assert summary["notebooks"][0]["test_result"] == "01-research-environment/test_result.json"
+    assert summary["notebooks"][0]["code_cell_count"] >= 3
 
 
 def test_quantopian_style_results_workflow_contract():
@@ -207,6 +226,8 @@ def test_quantopian_style_results_docs_are_linked():
     assert "GitHub Pages" in readme
     assert "python scripts/run_quantopian_style_workflow.py" in notebook_readme
     assert "python scripts/build_quantopian_style_dashboard.py" in notebook_readme
+    assert "notebook-test-results.json" in notebook_readme
+    assert "test_result.json" in notebook_readme
     assert "WEBULL_QUANTOPIAN_LIVE=0" in notebook_readme
     assert "scripts/run_quantopian_style_workflow.py" in llms
     assert "scripts/build_quantopian_style_dashboard.py" in llms

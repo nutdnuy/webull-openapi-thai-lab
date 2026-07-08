@@ -37,6 +37,7 @@ def execute_notebook(notebook_path: Path, output_root: Path) -> dict:
     slug = notebook_path.stem.replace("_", "-")
     output_dir = output_root / slug
     output_dir.mkdir(parents=True, exist_ok=True)
+    code_cell_count = sum(1 for cell in notebook["cells"] if cell.get("cell_type") == "code")
 
     namespace: dict[str, object] = {}
     stdout = io.StringIO()
@@ -67,6 +68,44 @@ def execute_notebook(notebook_path: Path, output_root: Path) -> dict:
     json_files = sorted(path.name for path in output_dir.glob("*.json"))
     html_files = sorted(path.name for path in output_dir.glob("*.html"))
     csv_files = sorted(path.name for path in output_dir.glob("*.csv"))
+    test_result = {
+        "notebook": notebook_path.name,
+        "slug": slug,
+        "status": status,
+        "passed": status == "passed",
+        "live_mode": False,
+        "elapsed_seconds": elapsed_seconds,
+        "code_cell_count": code_cell_count,
+        "generated_artifacts": {
+            "json_files": json_files,
+            "html_files": html_files,
+            "csv_files": csv_files,
+            "stdout": "stdout.txt",
+            "error": "error.txt" if error else "",
+        },
+        "checks": [
+            {
+                "name": "offline_notebook_execution",
+                "status": status,
+                "message": "Executed every code cell top-to-bottom with WEBULL_QUANTOPIAN_LIVE=0.",
+            },
+            {
+                "name": "html_chart_artifacts",
+                "status": "passed" if html_files else "failed",
+                "message": f"Generated {len(html_files)} HTML chart artifact(s).",
+            },
+            {
+                "name": "machine_readable_artifacts",
+                "status": "passed" if json_files else "failed",
+                "message": f"Generated {len(json_files)} JSON artifact(s).",
+            },
+        ],
+    }
+    (output_dir / "test_result.json").write_text(
+        json.dumps(test_result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    json_files = sorted(path.name for path in output_dir.glob("*.json"))
 
     return {
         "notebook": notebook_path.name,
@@ -78,6 +117,8 @@ def execute_notebook(notebook_path: Path, output_root: Path) -> dict:
         "csv_files": csv_files,
         "stdout": f"{slug}/stdout.txt",
         "error": f"{slug}/error.txt" if error else "",
+        "test_result": f"{slug}/test_result.json",
+        "code_cell_count": code_cell_count,
     }
 
 
@@ -99,10 +140,33 @@ def run(notebook_dir: Path, output_dir: Path) -> int:
         "notebook_count": len(results),
         "passed_count": sum(item["status"] == "passed" for item in results),
         "failed_count": sum(item["status"] != "passed" for item in results),
+        "test_results": "notebook-test-results.json",
         "notebooks": results,
+    }
+    test_results = {
+        "name": "Webull Quantopian-Style Notebook Test Results",
+        "live_mode": False,
+        "notebook_count": manifest["notebook_count"],
+        "passed_count": manifest["passed_count"],
+        "failed_count": manifest["failed_count"],
+        "tests": [
+            {
+                "notebook": item["notebook"],
+                "slug": item["slug"],
+                "status": item["status"],
+                "elapsed_seconds": item["elapsed_seconds"],
+                "code_cell_count": item["code_cell_count"],
+                "test_result": item["test_result"],
+            }
+            for item in results
+        ],
     }
     (output_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "notebook-test-results.json").write_text(
+        json.dumps(test_results, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     print(json.dumps(manifest, indent=2, sort_keys=True))
