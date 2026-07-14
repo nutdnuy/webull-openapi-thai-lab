@@ -45,7 +45,7 @@ def test_build_api_client_sets_endpoint_and_token_dir():
 
     assert api_client.app_key == "key_123"
     assert api_client.region == "us"
-    assert api_client.endpoints == [("us", "us-openapi-alb.uat.webullbroker.com")]
+    assert api_client.endpoints == [("us", "api.sandbox.webull.com")]
     assert api_client.token_dir == ".webull-token"
 
 
@@ -57,7 +57,7 @@ def test_build_trade_client_wraps_api_client():
     )
 
     assert isinstance(trade_client, FakeTradeClient)
-    assert trade_client.api_client.endpoints == [("us", "us-openapi-alb.uat.webullbroker.com")]
+    assert trade_client.api_client.endpoints == [("us", "api.sandbox.webull.com")]
 
 
 def test_build_data_client_wraps_api_client():
@@ -68,4 +68,4 @@ def test_build_data_client_wraps_api_client():
     )
 
     assert isinstance(data_client, FakeDataClient)
-    assert data_client.api_client.endpoints == [("us", "us-openapi-alb.uat.webullbroker.com")]
+    assert data_client.api_client.endpoints == [("us", "api.sandbox.webull.com")]

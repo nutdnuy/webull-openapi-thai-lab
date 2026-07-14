@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 TRADING_ENDPOINTS = {
-    "uat": "us-openapi-alb.uat.webullbroker.com",
+    "uat": "api.sandbox.webull.com",
     "prod": "api.webull.com",
 }
 
