@@ -1,5 +1,8 @@
 import copy
+import io
 import json
+import logging
+import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -50,6 +53,24 @@ class FakeDataClient:
         self.market_data = FakeMarketData()
 
 
+class LoggingMarketData(FakeMarketData):
+    marker = "MARKER_REQUEST_SECRET_MUST_NOT_LEAK"
+
+    def _emit_secret_logs(self):
+        print(f"stdout {self.marker}")
+        print(f"stderr {self.marker}", file=sys.stderr)
+        logging.getLogger("webull").critical(self.marker)
+        logging.getLogger("webull.core.http.response").critical(self.marker)
+
+    def get_snapshot(self, *args, **kwargs):
+        self._emit_secret_logs()
+        return super().get_snapshot(*args, **kwargs)
+
+    def get_history_bar(self, *args, **kwargs):
+        self._emit_secret_logs()
+        return super().get_history_bar(*args, **kwargs)
+
+
 def test_get_stock_snapshot_uses_us_stock_category():
     client = FakeDataClient()
 
@@ -93,6 +114,63 @@ def test_get_daily_stock_bars_requests_daily_timespan():
 
     assert payload == [{"symbol": "AAPL", "close": "200.00"}]
     assert client.market_data.calls == [("bars", "AAPL", "US_STOCK", "D")]
+
+
+def test_market_data_sdk_calls_suppress_output_and_restore_logging_state(
+    monkeypatch, capsys
+):
+    marker = LoggingMarketData.marker
+    client = FakeDataClient()
+    client.market_data = LoggingMarketData()
+    webull_logger = logging.getLogger("webull")
+    response_logger = logging.getLogger("webull.core.http.response")
+    webull_handler = logging.StreamHandler(io.StringIO())
+    response_handler = logging.StreamHandler(io.StringIO())
+    monkeypatch.setattr(webull_logger, "handlers", [webull_handler])
+    monkeypatch.setattr(webull_logger, "level", logging.INFO)
+    monkeypatch.setattr(webull_logger, "disabled", False)
+    monkeypatch.setattr(webull_logger, "propagate", False)
+    monkeypatch.setattr(response_logger, "handlers", [response_handler])
+    monkeypatch.setattr(response_logger, "level", logging.DEBUG)
+    monkeypatch.setattr(response_logger, "disabled", False)
+    monkeypatch.setattr(response_logger, "propagate", True)
+    monkeypatch.setattr(logging.root.manager, "disable", 9)
+    expected_states = {
+        "webull": (
+            tuple(webull_logger.handlers),
+            webull_logger.level,
+            webull_logger.disabled,
+            webull_logger.propagate,
+        ),
+        "response": (
+            tuple(response_logger.handlers),
+            response_logger.level,
+            response_logger.disabled,
+            response_logger.propagate,
+        ),
+    }
+
+    get_stock_snapshot(client, "AAPL")
+    get_stock_bars(client, "AAPL")
+
+    captured = capsys.readouterr()
+    assert marker not in captured.out
+    assert marker not in captured.err
+    assert logging.root.manager.disable == 9
+    assert (
+        tuple(webull_logger.handlers),
+        webull_logger.level,
+        webull_logger.disabled,
+        webull_logger.propagate,
+    ) == expected_states["webull"]
+    assert (
+        tuple(response_logger.handlers),
+        response_logger.level,
+        response_logger.disabled,
+        response_logger.propagate,
+    ) == expected_states["response"]
+    assert marker not in webull_handler.stream.getvalue()
+    assert marker not in response_handler.stream.getvalue()
 
 
 def test_normalize_stock_bars_parses_fixture_without_losing_precision():

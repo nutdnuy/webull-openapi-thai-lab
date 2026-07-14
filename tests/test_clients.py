@@ -1,4 +1,6 @@
+import io
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -48,9 +50,17 @@ class LoggingSdkClient:
         self._emit_logs()
 
     def _emit_logs(self):
+        print(f"stdout {self.marker}")
+        print(f"stderr {self.marker}", file=sys.stderr)
         logging.getLogger("webull.core.client").error(
             "signed request app_key=%s signature=%s", self.marker, self.marker
         )
+
+
+class FailingLoggingSdkClient(LoggingSdkClient):
+    def __init__(self, api_client):
+        super().__init__(api_client)
+        raise RuntimeError(self.marker)
         logging.getLogger("webull.core.http.response").debug(
             "x-app-key=%s x-signature=%s", self.marker, self.marker
         )
@@ -99,28 +109,88 @@ def test_build_data_client_wraps_api_client():
 
 
 @pytest.mark.parametrize(
-    ("builder", "client_class_argument", "log_filename"),
+    ("builder", "client_class_argument", "log_filename", "client_class"),
     [
-        (build_data_client, "data_client_cls", "webull_data_sdk.log"),
-        (build_trade_client, "trade_client_cls", "webull_trade_sdk.log"),
+        (build_data_client, "data_client_cls", "webull_data_sdk.log", LoggingSdkClient),
+        (build_trade_client, "trade_client_cls", "webull_trade_sdk.log", LoggingSdkClient),
+        (
+            build_data_client,
+            "data_client_cls",
+            "webull_data_sdk.log",
+            FailingLoggingSdkClient,
+        ),
+        (
+            build_trade_client,
+            "trade_client_cls",
+            "webull_trade_sdk.log",
+            FailingLoggingSdkClient,
+        ),
     ],
 )
-def test_sdk_clients_suppress_constructor_and_request_secret_logs(
-    monkeypatch, tmp_path, capsys, builder, client_class_argument, log_filename
+def test_sdk_client_build_scope_restores_logging_and_stream_state(
+    monkeypatch,
+    tmp_path,
+    capsys,
+    builder,
+    client_class_argument,
+    log_filename,
+    client_class,
 ):
     marker = "MARKER_KEY_AND_SIGNATURE_MUST_NOT_LEAK"
     monkeypatch.chdir(tmp_path)
+    webull_logger = logging.getLogger("webull")
     response_logger = logging.getLogger("webull.core.http.response")
-    response_logger.disabled = False
-    response_logger.setLevel(logging.DEBUG)
-    response_logger.addHandler(logging.StreamHandler())
-    LoggingSdkClient.marker = marker
-    LoggingSdkClient.log_filename = log_filename
+    webull_handler = logging.StreamHandler(io.StringIO())
+    response_handler = logging.StreamHandler(io.StringIO())
+    monkeypatch.setattr(webull_logger, "handlers", [webull_handler])
+    monkeypatch.setattr(webull_logger, "level", logging.WARNING)
+    monkeypatch.setattr(webull_logger, "disabled", False)
+    monkeypatch.setattr(webull_logger, "propagate", True)
+    monkeypatch.setattr(response_logger, "handlers", [response_handler])
+    monkeypatch.setattr(response_logger, "level", logging.DEBUG)
+    monkeypatch.setattr(response_logger, "disabled", True)
+    monkeypatch.setattr(response_logger, "propagate", False)
+    monkeypatch.setattr(logging.root.manager, "disable", 17)
+    expected_webull_state = (
+        tuple(webull_logger.handlers),
+        webull_logger.level,
+        webull_logger.disabled,
+        webull_logger.propagate,
+    )
+    expected_response_state = (
+        tuple(response_logger.handlers),
+        response_logger.level,
+        response_logger.disabled,
+        response_logger.propagate,
+    )
+    stdout_before = sys.stdout
+    stderr_before = sys.stderr
+    client_class.marker = marker
+    client_class.log_filename = log_filename
 
-    client = builder(make_settings(), **{client_class_argument: LoggingSdkClient})
-    client.emit_request_log()
+    for _ in range(2):
+        if client_class is FailingLoggingSdkClient:
+            with pytest.raises(RuntimeError, match=marker):
+                builder(make_settings(), **{client_class_argument: client_class})
+        else:
+            builder(make_settings(), **{client_class_argument: client_class})
 
     captured = capsys.readouterr()
     assert marker not in captured.out
     assert marker not in captured.err
     assert not (tmp_path / log_filename).exists()
+    assert logging.root.manager.disable == 17
+    assert sys.stdout is stdout_before
+    assert sys.stderr is stderr_before
+    assert (
+        tuple(webull_logger.handlers),
+        webull_logger.level,
+        webull_logger.disabled,
+        webull_logger.propagate,
+    ) == expected_webull_state
+    assert (
+        tuple(response_logger.handlers),
+        response_logger.level,
+        response_logger.disabled,
+        response_logger.propagate,
+    ) == expected_response_state
