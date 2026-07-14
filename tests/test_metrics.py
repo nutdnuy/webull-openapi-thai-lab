@@ -399,6 +399,36 @@ def test_pe_requires_sec_usd_per_share_unit():
     assert pe["price_date"] == "2024-11-01"
 
 
+@pytest.mark.parametrize("eps", [0, -2])
+def test_pe_is_not_meaningful_when_diluted_eps_is_non_positive(eps):
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("diluted_eps", eps, 2024, "2024-11-01", unit="USD/shares"),
+        ]
+    )
+    prices = pd.DataFrame(
+        {"date": [date(2024, 11, 1)], "close": [Decimal("222")]}
+    )
+
+    result = build_financial_metrics(
+        {"income_statement": income}, prices
+    ).set_index("metric")
+
+    assert result.loc["pe", "status"] == "not_meaningful"
+    assert result.loc["pe", "value"] is None
+    assert result.loc["pe", "price_date"] == "2024-11-01"
+
+
+def test_other_ratios_keep_existing_negative_denominator_rule():
+    result = safe_ratio(
+        "debt_to_equity", Decimal("20"), Decimal("-10"), date(2025, 2, 1)
+    )
+
+    assert result.status == "available"
+    assert result.value == Decimal("-2")
+
+
 def test_builder_handles_missing_statement_keys_and_no_annual_input():
     result = build_financial_metrics({}, pd.DataFrame())
 

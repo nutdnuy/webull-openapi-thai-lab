@@ -482,6 +482,10 @@ def build_financial_metrics(
         if aligned_close is not None
         and diluted_eps is not None
         and diluted_eps.unit not in _SEC_USD_PER_SHARE_UNITS
+        else MetricResult("pe", None, "not_meaningful", pe_date)
+        if diluted_eps is not None
+        and diluted_eps.unit in _SEC_USD_PER_SHARE_UNITS
+        and diluted_eps.value <= 0
         else safe_ratio(
             "pe",
             aligned_close,

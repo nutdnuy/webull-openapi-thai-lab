@@ -38,9 +38,8 @@ CANONICAL_TAGS = {
         "current_liabilities": ["LiabilitiesCurrent"],
         "total_liabilities": ["Liabilities"],
         "debt": [
-            "LongTermDebtAndFinanceLeaseObligationsCurrent",
-            "LongTermDebtCurrent",
-            "LongTermDebtNoncurrent",
+            "LongTermDebtAndFinanceLeaseObligations",
+            "LongTermDebt",
         ],
         "stockholders_equity": ["StockholdersEquity"],
     },
@@ -52,6 +51,15 @@ CANONICAL_TAGS = {
         "dividends_paid": ["PaymentsOfDividends"],
     },
 }
+
+_DEBT_COMPONENT_PAIRS = (
+    (
+        "LongTermDebtAndFinanceLeaseObligationsCurrent",
+        "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
+    ),
+    ("LongTermDebtCurrent", "LongTermDebtNoncurrent"),
+)
+_DEBT_COMPONENT_PREFIX = "__debt_component_"
 
 OUTPUT_COLUMNS = [
     "ticker",
@@ -236,6 +244,41 @@ def _candidate_rows(ticker: str, cik: str, us_gaap: dict) -> list[dict[str, Any]
                                 "tag_priority": tag_priority,
                             }
                         )
+    for pair_priority, tags in enumerate(_DEBT_COMPONENT_PAIRS):
+        for component, tag in zip(("current", "noncurrent"), tags, strict=True):
+            fact = us_gaap.get(tag)
+            if fact is None:
+                continue
+            for unit, observations in fact["units"].items():
+                for observation in observations:
+                    if observation.get("form") not in _SUPPORTED_FORMS:
+                        continue
+                    rows.append(
+                        {
+                            "ticker": ticker,
+                            "cik": cik,
+                            "statement": "balance_sheet",
+                            "canonical_metric": (
+                                f"{_DEBT_COMPONENT_PREFIX}{pair_priority}_{component}"
+                            ),
+                            "source_taxonomy": "us-gaap",
+                            "source_tag": tag,
+                            "value": observation["val"],
+                            "unit": unit,
+                            "start_date": observation.get("start"),
+                            "end_date": observation.get("end"),
+                            "form": observation.get("form"),
+                            "fiscal_year": observation.get("fy"),
+                            "fiscal_period": observation.get("fp"),
+                            "filed_date": observation.get("filed"),
+                            "frame": observation.get("frame"),
+                            "accession_number": observation.get("accn"),
+                            "period_type": _period_type("balance_sheet", observation),
+                            "derived": False,
+                            "superseded_accessions": "[]",
+                            "tag_priority": 0,
+                        }
+                    )
     return rows
 
 
@@ -293,6 +336,82 @@ def _select_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return selected
 
 
+def _debt_identity(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        row["ticker"],
+        row["cik"],
+        row["start_date"],
+        row["end_date"],
+        row["unit"],
+        row["economic_fiscal_year"],
+        row["fiscal_period"],
+        row["period_type"],
+        row["form"].removesuffix("/A"),
+    )
+
+
+def _derive_debt_from_components(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    total_debt_identities = {
+        _debt_identity(row)
+        for row in rows
+        if row["canonical_metric"] == "debt"
+    }
+    component_rows = {
+        (row["canonical_metric"], _debt_identity(row)): row
+        for row in rows
+        if row["canonical_metric"].startswith(_DEBT_COMPONENT_PREFIX)
+    }
+    derived_rows: list[dict[str, Any]] = []
+    derived_identities: set[tuple[Any, ...]] = set()
+    for pair_priority, _ in enumerate(_DEBT_COMPONENT_PAIRS):
+        current_metric = f"{_DEBT_COMPONENT_PREFIX}{pair_priority}_current"
+        noncurrent_metric = f"{_DEBT_COMPONENT_PREFIX}{pair_priority}_noncurrent"
+        current_by_identity = {
+            identity: row
+            for (metric, identity), row in component_rows.items()
+            if metric == current_metric
+        }
+        noncurrent_by_identity = {
+            identity: row
+            for (metric, identity), row in component_rows.items()
+            if metric == noncurrent_metric
+        }
+        for identity in current_by_identity.keys() & noncurrent_by_identity.keys():
+            if identity in total_debt_identities or identity in derived_identities:
+                continue
+            current = current_by_identity[identity]
+            noncurrent = noncurrent_by_identity[identity]
+            latest = max(
+                (current, noncurrent),
+                key=lambda row: (row["filed_date"], row["accession_number"]),
+            )
+            derived = latest.copy()
+            derived["canonical_metric"] = "debt"
+            derived["source_tag"] = (
+                f'{current["source_tag"]} + {noncurrent["source_tag"]}'
+            )
+            derived["value"] = current["value"] + noncurrent["value"]
+            derived["filed_date"] = max(current["filed_date"], noncurrent["filed_date"])
+            derived["frame"] = (
+                current["frame"] if current["frame"] == noncurrent["frame"] else None
+            )
+            derived["derived"] = True
+            provenance = sorted(
+                set(
+                    _provenance_accessions(pd.Series(current))
+                    + _provenance_accessions(pd.Series(noncurrent))
+                )
+            )
+            derived["superseded_accessions"] = json.dumps(provenance)
+            derived_rows.append(derived)
+            derived_identities.add(identity)
+    return [
+        row
+        for row in rows
+        if not row["canonical_metric"].startswith(_DEBT_COMPONENT_PREFIX)
+    ] + derived_rows
+
+
 def _sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
     fiscal_year = row["fiscal_year"]
     sortable_year = (
@@ -333,7 +452,10 @@ def build_financial_statements(
     """Normalize SEC Company Facts into three schema-stable financial statements."""
     normalized_ticker, normalized_cik, us_gaap = _validate_inputs(ticker, cik, payload, years)
     rows = _filter_years(
-        _select_rows(_candidate_rows(normalized_ticker, normalized_cik, us_gaap)), years
+        _derive_debt_from_components(
+            _select_rows(_candidate_rows(normalized_ticker, normalized_cik, us_gaap))
+        ),
+        years,
     )
     for row in rows:
         row["fiscal_year"] = row.pop("economic_fiscal_year")
@@ -447,6 +569,16 @@ def derive_discrete_quarter(current_ytd: pd.Series, prior_ytd: pd.Series) -> pd.
     if not _numeric(current_value) or not _numeric(prior_value):
         raise ValueError("financial row values must be numeric")
     try:
+        filed_dates = [
+            date.fromisoformat(value)
+            for value in (current_ytd.get("filed_date"), prior_ytd.get("filed_date"))
+            if isinstance(value, str) and _ISO_DATE.fullmatch(value)
+        ]
+    except ValueError:
+        raise ValueError("financial row filed dates must be valid") from None
+    if len(filed_dates) != 2:
+        raise ValueError("financial row filed dates must be valid")
+    try:
         fiscal_year_start = pd.Timestamp(current_ytd.get("start_date"))
         current_end = pd.Timestamp(current_ytd.get("end_date"))
         prior_end = pd.Timestamp(prior_ytd.get("end_date"))
@@ -466,6 +598,7 @@ def derive_discrete_quarter(current_ytd: pd.Series, prior_ytd: pd.Series) -> pd.
     result["start_date"] = (prior_end + pd.Timedelta(days=1)).date().isoformat()
     result["period_type"] = "quarterly"
     result["derived"] = True
+    result["filed_date"] = max(filed_dates).isoformat()
     provenance = sorted(
         set(_provenance_accessions(current_ytd) + _provenance_accessions(prior_ytd))
     )

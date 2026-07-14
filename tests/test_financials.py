@@ -78,9 +78,8 @@ def test_canonical_tags_exactly_match_approved_mapping():
             "current_liabilities": ["LiabilitiesCurrent"],
             "total_liabilities": ["Liabilities"],
             "debt": [
-                "LongTermDebtAndFinanceLeaseObligationsCurrent",
-                "LongTermDebtCurrent",
-                "LongTermDebtNoncurrent",
+                "LongTermDebtAndFinanceLeaseObligations",
+                "LongTermDebt",
             ],
             "stockholders_equity": ["StockholdersEquity"],
         },
@@ -92,6 +91,116 @@ def test_canonical_tags_exactly_match_approved_mapping():
             "dividends_paid": ["PaymentsOfDividends"],
         },
     }
+
+
+def test_debt_sums_compatible_current_and_noncurrent_components():
+    payload = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtCurrent": {
+                    "units": {
+                        "USD": [
+                            observation(
+                                20,
+                                start=None,
+                                accession="current-debt",
+                                filed="2025-02-01",
+                            )
+                        ]
+                    }
+                },
+                "LongTermDebtNoncurrent": {
+                    "units": {
+                        "USD": [
+                            observation(
+                                80,
+                                start=None,
+                                accession="noncurrent-debt",
+                                filed="2025-02-03",
+                            )
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+    debt = build_financial_statements("AAPL", "320193", payload)[
+        "balance_sheet"
+    ].iloc[0]
+
+    assert debt["canonical_metric"] == "debt"
+    assert debt["value"] == 100
+    assert debt["derived"] is True
+    assert debt["filed_date"] == "2025-02-03"
+    assert debt["accession_number"] == "noncurrent-debt"
+    assert debt["source_tag"] == "LongTermDebtCurrent + LongTermDebtNoncurrent"
+    assert json.loads(debt["superseded_accessions"]) == [
+        "current-debt",
+        "noncurrent-debt",
+    ]
+
+
+def test_authoritative_total_debt_tag_takes_precedence_over_components():
+    payload = {
+        "facts": {
+            "us-gaap": {
+                tag: {
+                    "units": {
+                        "USD": [
+                            observation(
+                                value,
+                                start=None,
+                                accession=accession,
+                                filed=filed,
+                            )
+                        ]
+                    }
+                }
+                for tag, value, accession, filed in [
+                    ("LongTermDebt", 95, "total", "2025-02-01"),
+                    ("LongTermDebtCurrent", 20, "current", "2025-02-03"),
+                    ("LongTermDebtNoncurrent", 80, "noncurrent", "2025-02-03"),
+                ]
+            }
+        }
+    }
+
+    debt = build_financial_statements("AAPL", "320193", payload)["balance_sheet"]
+
+    assert len(debt) == 1
+    assert debt.iloc[0]["value"] == 95
+    assert debt.iloc[0]["source_tag"] == "LongTermDebt"
+    assert debt.iloc[0]["derived"] is False
+
+
+def test_debt_components_require_compatible_base_forms():
+    payload = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtCurrent": {
+                    "units": {
+                        "USD": [
+                            observation(20, start=None, form="10-Q", accession="current")
+                        ]
+                    }
+                },
+                "LongTermDebtNoncurrent": {
+                    "units": {
+                        "USD": [
+                            observation(
+                                80, start=None, form="10-K/A", accession="noncurrent"
+                            )
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+    debt = build_financial_statements("AAPL", "320193", payload)["balance_sheet"]
+
+    assert debt.empty
 
 
 def test_schema_keys_columns_and_fixture_provenance_are_stable(companyfacts):
@@ -711,6 +820,42 @@ def test_derive_discrete_quarter_subtracts_ytd_and_preserves_inputs():
     assert result["superseded_accessions"] == '["current", "prior"]'
     pd.testing.assert_series_equal(current, current_before)
     pd.testing.assert_series_equal(prior, prior_before)
+
+
+def test_derive_discrete_quarter_uses_later_prior_amendment_as_availability_date():
+    current = series_for_derivation(filed_date="2025-05-01")
+    prior = series_for_derivation(
+        value=300,
+        end_date="2024-12-28",
+        fiscal_period="Q1",
+        filed_date="2025-05-15",
+        accession_number="amended-prior",
+        period_type="quarterly",
+    )
+
+    result = derive_discrete_quarter(current, prior)
+
+    assert result["filed_date"] == "2025-05-15"
+    assert result["accession_number"] == "current"
+    assert json.loads(result["superseded_accessions"]) == [
+        "amended-prior",
+        "current",
+    ]
+
+
+@pytest.mark.parametrize("bad_filed_date", [None, "", "2025/05/01", "2025-02-30"])
+def test_derive_discrete_quarter_rejects_invalid_input_filed_dates(bad_filed_date):
+    current = series_for_derivation(filed_date=bad_filed_date)
+    prior = series_for_derivation(
+        value=300,
+        end_date="2024-12-28",
+        fiscal_period="Q1",
+        accession_number="prior",
+        period_type="quarterly",
+    )
+
+    with pytest.raises(ValueError, match="filed dates"):
+        derive_discrete_quarter(current, prior)
 
 
 @pytest.mark.parametrize(
