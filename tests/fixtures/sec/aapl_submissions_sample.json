@@ -1,0 +1,6 @@
+{
+  "cik": "0000320193",
+  "name": "Apple Inc.",
+  "tickers": ["AAPL"],
+  "filings": {"recent": {"accessionNumber": ["0000320193-24-000123"], "filingDate": ["2024-11-01"], "reportDate": ["2024-09-28"], "form": ["10-K"]}}
+}
