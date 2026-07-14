@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from webull_lab.market_data import (
@@ -127,6 +129,30 @@ def test_normalize_stock_bars_parses_fixture_without_losing_precision():
     assert all(isinstance(value, int) for value in frame["volume"])
 
 
+def test_normalize_stock_bars_has_consistent_arrow_schema_for_parquet(tmp_path):
+    sample = normalize_stock_bars(json.loads(FIXTURE_PATH.read_text()))
+    empty = normalize_stock_bars([])
+    sample_path = tmp_path / "sample.parquet"
+    empty_path = tmp_path / "empty.parquet"
+
+    sample.to_parquet(sample_path, index=False)
+    empty.to_parquet(empty_path, index=False)
+
+    expected = pa.schema(
+        [
+            pa.field("symbol", pa.string()),
+            pa.field("date", pa.date32()),
+            pa.field("open", pa.decimal128(20, 8)),
+            pa.field("high", pa.decimal128(20, 8)),
+            pa.field("low", pa.decimal128(20, 8)),
+            pa.field("close", pa.decimal128(20, 8)),
+            pa.field("volume", pa.int64()),
+        ]
+    )
+    assert pq.read_schema(sample_path).remove_metadata() == expected
+    assert pq.read_schema(empty_path).remove_metadata() == expected
+
+
 def test_normalize_stock_bars_accepts_supported_numeric_representations():
     payload = [
         {
@@ -204,6 +230,16 @@ def test_normalize_stock_bars_rejects_unicode_numeric_timestamp_safely():
     assert "²" not in str(exc_info.value)
 
 
+def test_normalize_stock_bars_rejects_oversized_timestamp_string_safely():
+    row = _valid_bar(time="9" * 5000)
+
+    with pytest.raises(ValueError) as exc_info:
+        normalize_stock_bars([row])
+
+    assert str(exc_info.value) == "Webull bar row 0 field 'time' is invalid"
+    assert "999999" not in str(exc_info.value)
+
+
 @pytest.mark.parametrize("field", ["open", "high", "low", "close"])
 @pytest.mark.parametrize("value", [True, -1, "-0.01", float("nan"), float("inf"), "bad"])
 def test_normalize_stock_bars_rejects_invalid_prices(field, value):
@@ -211,6 +247,17 @@ def test_normalize_stock_bars_rejects_invalid_prices(field, value):
 
     with pytest.raises(ValueError, match=rf"row 0 field '{field}'"):
         normalize_stock_bars([row])
+
+
+@pytest.mark.parametrize("value", ["1000000000000", "0.000000001", "9" * 5000])
+def test_normalize_stock_bars_rejects_prices_outside_decimal_schema_safely(value):
+    row = _valid_bar(open=value)
+
+    with pytest.raises(ValueError) as exc_info:
+        normalize_stock_bars([row])
+
+    assert str(exc_info.value) == "Webull bar row 0 field 'open' is invalid"
+    assert value not in str(exc_info.value)
 
 
 @pytest.mark.parametrize("volume", [True, -1, "-1", 1.0, "1.5", "", None])
@@ -229,6 +276,17 @@ def test_normalize_stock_bars_rejects_unicode_numeric_volume_safely():
 
     assert str(exc_info.value) == "Webull bar row 0 field 'volume' is invalid"
     assert "²" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("volume", [2**63, str(2**63), "9" * 5000])
+def test_normalize_stock_bars_rejects_volume_outside_int64_safely(volume):
+    row = _valid_bar(volume=volume)
+
+    with pytest.raises(ValueError) as exc_info:
+        normalize_stock_bars([row])
+
+    assert str(exc_info.value) == "Webull bar row 0 field 'volume' is invalid"
+    assert str(volume) not in str(exc_info.value)
 
 
 def test_normalize_stock_bars_rejects_missing_fields_without_echoing_row_data():

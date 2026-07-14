@@ -7,11 +7,26 @@ from math import isfinite
 from typing import Any
 
 import pandas as pd
+import pyarrow as pa
 
 from webull_lab.account import response_json_or_raise
 
 US_STOCK = "US_STOCK"
 BAR_COLUMNS = ["symbol", "date", "open", "high", "low", "close", "volume"]
+PRICE_PRECISION = 20
+PRICE_SCALE = 8
+MAX_PRICE_INTEGER_DIGITS = PRICE_PRECISION - PRICE_SCALE
+MAX_TIMESTAMP_MS = 253402300799999
+MAX_VOLUME = 2**63 - 1
+BAR_DTYPES = {
+    "symbol": pd.ArrowDtype(pa.string()),
+    "date": pd.ArrowDtype(pa.date32()),
+    "open": pd.ArrowDtype(pa.decimal128(PRICE_PRECISION, PRICE_SCALE)),
+    "high": pd.ArrowDtype(pa.decimal128(PRICE_PRECISION, PRICE_SCALE)),
+    "low": pd.ArrowDtype(pa.decimal128(PRICE_PRECISION, PRICE_SCALE)),
+    "close": pd.ArrowDtype(pa.decimal128(PRICE_PRECISION, PRICE_SCALE)),
+    "volume": pd.ArrowDtype(pa.int64()),
+}
 
 
 def get_stock_snapshot(data_client: Any, symbol: str) -> Any:
@@ -36,6 +51,11 @@ def get_daily_stock_bars(data_client: Any, symbol: str) -> Any:
 
 
 def normalize_stock_bars(payload: object) -> pd.DataFrame:
+    """Normalize bars to an Arrow-stable schema suitable for Parquet.
+
+    Prices are nonnegative decimal128(20, 8): at most 12 integer and 8 fractional
+    digits, without rounding. Volume is a nonnegative signed int64.
+    """
     if not isinstance(payload, list):
         raise ValueError("Webull bars payload must be a list")
 
@@ -64,11 +84,13 @@ def normalize_stock_bars(payload: object) -> pd.DataFrame:
         seen_keys.add(key)
         rows.append(row)
 
-    return (
-        pd.DataFrame(rows, columns=BAR_COLUMNS)
-        .sort_values(["symbol", "date"])
-        .reset_index(drop=True)
+    frame = pd.DataFrame(
+        {
+            column: pd.Series([row[column] for row in rows], dtype=BAR_DTYPES[column])
+            for column in BAR_COLUMNS
+        }
     )
+    return frame.sort_values(["symbol", "date"]).reset_index(drop=True)
 
 
 def _required_field(item: Mapping[Any, Any], field: str, index: int) -> Any:
@@ -84,17 +106,7 @@ def _parse_symbol(value: Any, index: int) -> str:
 
 
 def _parse_timestamp(value: Any, index: int) -> int:
-    if isinstance(value, bool):
-        raise ValueError(f"Webull bar row {index} field 'time' is invalid")
-    if isinstance(value, int):
-        timestamp_ms = value
-    elif isinstance(value, str) and value.isascii() and value.isdecimal():
-        timestamp_ms = int(value)
-    else:
-        raise ValueError(f"Webull bar row {index} field 'time' is invalid")
-    if timestamp_ms < 0:
-        raise ValueError(f"Webull bar row {index} field 'time' is invalid")
-    return timestamp_ms
+    return _parse_bounded_integer(value, "time", index, MAX_TIMESTAMP_MS)
 
 
 def _timestamp_to_utc_date(timestamp_ms: int, index: int) -> date:
@@ -115,18 +127,30 @@ def _parse_price(value: Any, field: str, index: int) -> Decimal:
         raise ValueError(f"Webull bar row {index} field '{field}' is invalid") from None
     if not price.is_finite() or price < 0:
         raise ValueError(f"Webull bar row {index} field '{field}' is invalid")
+    _, digits, exponent = price.as_tuple()
+    integer_digits = max(len(digits) + exponent, 0)
+    scale = max(-exponent, 0)
+    if integer_digits > MAX_PRICE_INTEGER_DIGITS or scale > PRICE_SCALE:
+        raise ValueError(f"Webull bar row {index} field '{field}' is invalid")
     return price
 
 
 def _parse_volume(value: Any, index: int) -> int:
+    return _parse_bounded_integer(value, "volume", index, MAX_VOLUME)
+
+
+def _parse_bounded_integer(value: Any, field: str, index: int, maximum: int) -> int:
     if isinstance(value, bool):
-        raise ValueError(f"Webull bar row {index} field 'volume' is invalid")
+        raise ValueError(f"Webull bar row {index} field '{field}' is invalid")
     if isinstance(value, int):
-        volume = value
+        parsed = value
     elif isinstance(value, str) and value.isascii() and value.isdecimal():
-        volume = int(value)
+        normalized = value.lstrip("0") or "0"
+        if len(normalized) > len(str(maximum)):
+            raise ValueError(f"Webull bar row {index} field '{field}' is invalid")
+        parsed = int(normalized)
     else:
-        raise ValueError(f"Webull bar row {index} field 'volume' is invalid")
-    if volume < 0:
-        raise ValueError(f"Webull bar row {index} field 'volume' is invalid")
-    return volume
+        raise ValueError(f"Webull bar row {index} field '{field}' is invalid")
+    if parsed < 0 or parsed > maximum:
+        raise ValueError(f"Webull bar row {index} field '{field}' is invalid")
+    return parsed
