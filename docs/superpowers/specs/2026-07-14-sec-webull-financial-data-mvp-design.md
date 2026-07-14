@@ -1,6 +1,6 @@
 # SEC EDGAR + Webull Financial Data MVP Design
 
-**Date:** 2026-07-14  
+**Date:** 2026-07-14
 **Status:** Approved by owner on 2026-07-14
 **Repository:** `nutdnuy/webull-openapi-thai-lab`
 
