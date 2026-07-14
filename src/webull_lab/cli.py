@@ -59,6 +59,8 @@ def build_optional_data_client():
         return build_data_client(settings)
     except (ClientException, ServerException):
         return UNAVAILABLE_DATA_CLIENT
+    except Exception:
+        raise RuntimeError("Webull data client initialization failed") from None
 
 
 def print_company_data_error_and_exit(error: Exception) -> None:

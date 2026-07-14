@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from typer.testing import CliRunner
 from webull.core.exception.exceptions import ServerException
 
@@ -458,8 +459,9 @@ def test_company_data_degrades_sdk_init_failure_to_safe_sec_only_manifest(
     assert "Traceback" not in result.output
 
 
+@pytest.mark.parametrize("error_type", [RuntimeError, TypeError, AttributeError])
 def test_company_data_does_not_downgrade_unexpected_client_build_errors(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, error_type
 ):
     prepare_company_data_env(monkeypatch, tmp_path)
     marker_secret = "MARKER_SECRET_MUST_NOT_LEAK"
@@ -470,7 +472,7 @@ def test_company_data_does_not_downgrade_unexpected_client_build_errors(
     monkeypatch.setattr(cli_module, "load_settings", lambda: object())
 
     def fail_with_programming_error(settings):
-        raise RuntimeError(marker_secret)
+        raise error_type(marker_secret)
 
     monkeypatch.setattr(cli_module, "build_data_client", fail_with_programming_error)
     monkeypatch.setattr(
