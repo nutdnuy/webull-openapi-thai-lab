@@ -161,6 +161,36 @@ def test_duration_discrete_quarter_frame_takes_precedence_over_fy():
     assert row["period_type"] == "quarterly"
 
 
+@pytest.mark.parametrize(
+    "start,end,fiscal_period,expected",
+    [
+        ("2025-01-01", "2025-03-31", "Q1", "quarterly"),
+        ("2025-01-01", "2025-03-31", "FY", "quarterly"),
+        ("2025-01-01", "2025-06-30", "Q2", "ytd"),
+        ("2025-01-01", "2025-12-26", "FY", "annual"),
+    ],
+)
+def test_frameless_duration_uses_fiscal_period_and_inclusive_days(
+    start, end, fiscal_period, expected
+):
+    payload = payload_for(
+        "NetIncomeLoss",
+        [
+            observation(
+                100,
+                start=start,
+                end=end,
+                fiscal_period=fiscal_period,
+                frame=None,
+            )
+        ],
+    )
+
+    row = build_financial_statements("AAPL", "320193", payload)["income_statement"].iloc[0]
+
+    assert row["period_type"] == expected
+
+
 def test_quarterly_instant_balance_fact_is_not_ytd():
     payload = payload_for(
         "Assets",
@@ -275,6 +305,37 @@ def test_same_economic_period_deduplicates_across_changed_filing_metadata():
     assert rows.iloc[0]["superseded_accessions"] == '["original"]'
 
 
+def test_economic_dedup_ignores_differing_inferred_period_types():
+    original = observation(
+        100,
+        start="2024-01-01",
+        end="2024-12-31",
+        accession="original-annual",
+        fiscal_year=2024,
+        fiscal_period="FY",
+        filed="2025-02-01",
+        frame=None,
+    )
+    later = observation(
+        101,
+        start="2024-01-01",
+        end="2024-12-31",
+        accession="later-ytd",
+        fiscal_year=2025,
+        fiscal_period="Q3",
+        filed="2025-03-01",
+        frame=None,
+    )
+    payload = payload_for("NetIncomeLoss", [original, later])
+
+    rows = build_financial_statements("AAPL", "320193", payload)["income_statement"]
+
+    assert len(rows) == 1
+    assert rows.iloc[0]["accession_number"] == "later-ytd"
+    assert rows.iloc[0]["period_type"] == "ytd"
+    assert rows.iloc[0]["superseded_accessions"] == '["original-annual"]'
+
+
 def test_units_are_separate_and_unsupported_forms_are_excluded():
     supported = observation(100, accession="usd")
     unsupported = observation(200, accession="eight-k", form="8-K")
@@ -365,10 +426,18 @@ def test_years_filter_uses_latest_distinct_values_for_sparse_years():
     assert latest_one["fiscal_year"].tolist() == [2024]
 
 
-def test_years_filter_uses_economic_end_year_not_recent_filing_metadata():
+def test_years_filter_uses_original_fiscal_identity_not_recent_presentation():
     payload = payload_for(
         "NetIncomeLoss",
         [
+            observation(
+                1,
+                start="2020-01-01",
+                end="2020-12-31",
+                fiscal_year=2020,
+                accession="old-original",
+                filed="2021-02-01",
+            ),
             observation(
                 1,
                 start="2020-01-01",
@@ -393,6 +462,40 @@ def test_years_filter_uses_economic_end_year_not_recent_filing_metadata():
     ]
 
     assert rows["accession_number"].tolist() == ["latest-economic"]
+
+
+def test_years_filter_keeps_cross_calendar_periods_in_same_original_fiscal_year():
+    payload = payload_for(
+        "NetIncomeLoss",
+        [
+            observation(
+                10,
+                start="2025-10-01",
+                end="2025-12-31",
+                fiscal_year=2026,
+                fiscal_period="Q1",
+                accession="fy26-q1",
+                filed="2026-02-01",
+                frame=None,
+            ),
+            observation(
+                20,
+                start="2025-10-01",
+                end="2026-03-31",
+                fiscal_year=2026,
+                fiscal_period="Q2",
+                accession="fy26-q2",
+                filed="2026-05-01",
+                frame=None,
+            ),
+        ],
+    )
+
+    rows = build_financial_statements("AAPL", "320193", payload, years=1)[
+        "income_statement"
+    ]
+
+    assert rows["accession_number"].tolist() == ["fy26-q1", "fy26-q2"]
 
 
 @pytest.mark.parametrize("years", [0, -1, 1.5, "1", True])

@@ -186,6 +186,11 @@ def _period_type(statement: str, observation: dict) -> str:
         return "annual" if fiscal_period == "FY" else "quarterly"
     if isinstance(frame, str) and _DISCRETE_QUARTER_FRAME.fullmatch(frame):
         return "quarterly"
+    start_date = date.fromisoformat(observation["start"])
+    end_date = date.fromisoformat(observation["end"])
+    inclusive_days = (end_date - start_date).days + 1
+    if fiscal_period == "Q1" or inclusive_days <= 140:
+        return "quarterly"
     if fiscal_period == "FY":
         return "annual"
     return "ytd"
@@ -247,7 +252,6 @@ def _select_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             row["canonical_metric"],
             row["start_date"],
             row["end_date"],
-            row["period_type"],
             row["unit"],
         )
         groups.setdefault(key, []).append(row)
@@ -256,6 +260,24 @@ def _select_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for candidates in groups.values():
         selected_candidate = max(candidates, key=_selection_key)
         winner = selected_candidate.copy()
+        numeric_presentations = [
+            candidate
+            for candidate in candidates
+            if isinstance(candidate["fiscal_year"], Real)
+            and not isinstance(candidate["fiscal_year"], bool)
+            and (
+                isinstance(candidate["fiscal_year"], int)
+                or math.isfinite(candidate["fiscal_year"])
+            )
+        ]
+        if numeric_presentations:
+            original_presentation = min(
+                numeric_presentations,
+                key=lambda candidate: (candidate["filed_date"], candidate["tag_priority"]),
+            )
+            winner["economic_fiscal_year"] = original_presentation["fiscal_year"]
+        else:
+            winner["economic_fiscal_year"] = None
         displaced = sorted(
             {
                 candidate["accession_number"]
@@ -290,9 +312,16 @@ def _sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
 def _filter_years(rows: list[dict[str, Any]], years: int | None) -> list[dict[str, Any]]:
     if years is None:
         return rows
-    economic_years = {int(row["end_date"][:4]) for row in rows}
+    economic_years = {
+        row["economic_fiscal_year"]
+        for row in rows
+        if isinstance(row["economic_fiscal_year"], Real)
+        and not isinstance(row["economic_fiscal_year"], bool)
+    }
+    if not economic_years:
+        return rows
     latest_years = set(sorted(economic_years, reverse=True)[:years])
-    return [row for row in rows if int(row["end_date"][:4]) in latest_years]
+    return [row for row in rows if row["economic_fiscal_year"] in latest_years]
 
 
 def build_financial_statements(
@@ -306,6 +335,8 @@ def build_financial_statements(
     rows = _filter_years(
         _select_rows(_candidate_rows(normalized_ticker, normalized_cik, us_gaap)), years
     )
+    for row in rows:
+        row.pop("economic_fiscal_year")
     rows.sort(key=_sort_key)
     statements: dict[str, pd.DataFrame] = {}
     for statement in CANONICAL_TAGS:
