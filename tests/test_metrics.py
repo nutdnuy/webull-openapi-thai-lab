@@ -1,9 +1,11 @@
 from datetime import date
 from decimal import Decimal
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from webull_lab.financials import build_financial_statements
 from webull_lab.metrics import (
     FORMULAS,
     METRIC_COLUMNS,
@@ -336,6 +338,106 @@ def test_builder_handles_missing_statement_keys_and_no_annual_input():
 
     assert result.empty
     assert list(result.columns) == METRIC_COLUMNS
+
+
+def test_builder_returns_empty_when_only_non_income_statements_have_annual_rows():
+    balance = pd.DataFrame(
+        [_fact("stockholders_equity", 70, 2024, "2024-11-01")]
+    )
+
+    result = build_financial_metrics(
+        {"balance_sheet": balance, "cash_flow": pd.DataFrame()}, pd.DataFrame()
+    )
+
+    assert result.empty
+    assert list(result.columns) == METRIC_COLUMNS
+
+
+def test_balance_year_newer_than_income_does_not_shift_metric_period():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 100, 2023, "2023-11-01"),
+            _fact("revenue", 120, 2024, "2024-11-01"),
+        ]
+    )
+    balance = pd.DataFrame(
+        [
+            _fact("stockholders_equity", 70, 2024, "2024-11-01"),
+            _fact("stockholders_equity", 80, 2025, "2025-11-01"),
+        ]
+    )
+
+    result = build_financial_metrics(
+        {"income_statement": income, "balance_sheet": balance}, pd.DataFrame()
+    ).set_index("metric")
+
+    assert result.loc["revenue_growth", "current_period"] == 2024
+    assert result.loc["revenue_growth", "comparison_period"] == 2023
+    assert result.loc["revenue_growth", "value"] == Decimal("0.2")
+
+
+@pytest.mark.parametrize("fiscal_year", [2024.0, np.float64(2024.0), np.int64(2024)])
+def test_builder_normalizes_integral_real_fiscal_years(fiscal_year):
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 100, 2023.0, "2023-11-01"),
+            _fact("revenue", 120, fiscal_year, "2024-11-01"),
+        ]
+    )
+
+    result = build_financial_metrics(
+        {"income_statement": income}, pd.DataFrame()
+    ).set_index("metric")
+
+    assert result.loc["revenue_growth", "current_period"] == 2024
+    assert result.loc["revenue_growth", "comparison_period"] == 2023
+    assert result.loc["revenue_growth", "value"] == Decimal("0.2")
+
+
+@pytest.mark.parametrize("fiscal_year", [True, float("nan"), float("inf"), 2024.5])
+def test_builder_rejects_invalid_fiscal_years_safely(fiscal_year):
+    income = pd.DataFrame(
+        [_fact("revenue", 120, fiscal_year, "2024-11-01")]
+    )
+
+    with pytest.raises(ValueError, match="financial facts are invalid"):
+        build_financial_metrics({"income_statement": income}, pd.DataFrame())
+
+
+def test_metrics_compose_with_financial_statement_real_fiscal_years():
+    def observation(value, fiscal_year, end, filed, accession):
+        return {
+            "start": f"{int(fiscal_year) - 1}-10-01",
+            "end": end,
+            "val": value,
+            "accn": accession,
+            "fy": fiscal_year,
+            "fp": "FY",
+            "form": "10-K",
+            "filed": filed,
+            "frame": f"CY{int(fiscal_year)}",
+        }
+
+    payload = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            observation(100, 2023.0, "2023-09-30", "2023-11-01", "a"),
+                            observation(120, 2024.0, "2024-09-28", "2024-11-01", "b"),
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    statements = build_financial_statements("AAPL", "320193", payload)
+
+    result = build_financial_metrics(statements, pd.DataFrame()).set_index("metric")
+
+    assert result.loc["revenue_growth", "value"] == Decimal("0.2")
+    assert result.loc["revenue_growth", "current_period"] == 2024
 
 
 def test_builder_rejects_mixed_statement_tickers():

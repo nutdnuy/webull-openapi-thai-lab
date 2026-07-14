@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from numbers import Integral
+from math import isfinite
+from numbers import Integral, Real
 
 import pandas as pd
 
@@ -169,6 +170,19 @@ def _parse_decimal(value: object) -> Decimal:
     return parsed
 
 
+def _parse_fiscal_year(value: object) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, Real)
+        or (not isinstance(value, Integral) and not isfinite(value))
+    ):
+        raise ValueError("financial facts are invalid")
+    normalized = int(value)
+    if value != normalized:
+        raise ValueError("financial facts are invalid")
+    return normalized
+
+
 def _validated_annual_frames(
     statements: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
@@ -185,18 +199,19 @@ def _validated_annual_frames(
         if not _FACT_COLUMNS.issubset(frame.columns):
             raise ValueError("financial statements are invalid")
         annual = frame.loc[frame["period_type"] == "annual"].copy(deep=True)
+        fiscal_years: list[int] = []
         for row in annual.to_dict("records"):
             if (
                 not isinstance(row["ticker"], str)
                 or not row["ticker"].strip()
                 or not isinstance(row["canonical_metric"], str)
                 or not row["canonical_metric"].strip()
-                or isinstance(row["fiscal_year"], bool)
-                or not isinstance(row["fiscal_year"], Integral)
             ):
                 raise ValueError("financial facts are invalid")
+            fiscal_years.append(_parse_fiscal_year(row["fiscal_year"]))
             _parse_date(row["filed_date"])
             _parse_decimal(row["value"])
+        annual["fiscal_year"] = fiscal_years
         annual_frames[key] = annual
     return annual_frames
 
@@ -279,7 +294,8 @@ def _ticker_and_years(
     annual_frames: dict[str, pd.DataFrame],
 ) -> tuple[str, list[int], date] | None:
     frames = [frame for frame in annual_frames.values() if not frame.empty]
-    if not frames:
+    income = annual_frames["income_statement"]
+    if income.empty:
         return None
     tickers = {
         str(value).strip().upper()
@@ -288,13 +304,7 @@ def _ticker_and_years(
     }
     if len(tickers) != 1:
         raise ValueError("financial statements contain mixed tickers")
-    years = sorted(
-        {
-            int(value)
-            for frame in frames
-            for value in frame["fiscal_year"].tolist()
-        }
-    )
+    years = sorted(set(income["fiscal_year"].tolist()))
     current_year = years[-1]
     current_dates = [
         _parse_date(row["filed_date"])
