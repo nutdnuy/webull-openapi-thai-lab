@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pandas as pd
 import pytest
+from webull.core.exception.exceptions import ClientException, ServerException
 
 from webull_lab.company_pipeline import run_company_pipeline
 from webull_lab.financials import OUTPUT_COLUMNS
@@ -133,6 +134,52 @@ def test_pipeline_turns_expected_webull_failure_into_safe_partial_result(
     assert result["warnings"] == [SAFE_WEBULL_WARNING]
     assert secret not in str(result)
     assert secret not in (tmp_path / "run_manifest.json").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "sdk_error",
+    [
+        ClientException("SDK_HTTP_ERROR", "WEBULL_MARKER_SECRET"),
+        ServerException("SERVER_ERROR", "WEBULL_MARKER_SECRET", 500, "request-id"),
+    ],
+)
+def test_pipeline_turns_sdk_fetch_failure_into_safe_partial_result(
+    tmp_path, monkeypatch, capsys, sdk_error
+):
+    marker = "WEBULL_MARKER_SECRET"
+    monkeypatch.setattr(
+        "webull_lab.company_pipeline.get_daily_stock_bars",
+        lambda *args: (_ for _ in ()).throw(sdk_error),
+    )
+
+    result = run_company_pipeline("AAPL", 5, tmp_path, FakeSecClient(), data_client=object())
+
+    captured = capsys.readouterr()
+    manifest_text = (tmp_path / "run_manifest.json").read_text(encoding="utf-8")
+    assert result["webull_status"] == "unavailable"
+    assert result["warnings"] == [SAFE_WEBULL_WARNING]
+    assert marker not in str(result)
+    assert marker not in manifest_text
+    assert marker not in captured.out
+    assert marker not in captured.err
+
+
+def test_pipeline_does_not_catch_sdk_exception_from_normalization(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "webull_lab.company_pipeline.get_daily_stock_bars", lambda *args: [{"raw": "bar"}]
+    )
+
+    def fail_normalization(payload):
+        if payload:
+            raise ServerException("NORMALIZER_BUG", "not a fetch failure")
+        return pd.DataFrame()
+
+    monkeypatch.setattr("webull_lab.company_pipeline.normalize_stock_bars", fail_normalization)
+
+    with pytest.raises(ServerException):
+        run_company_pipeline("AAPL", 5, tmp_path, FakeSecClient(), data_client=object())
+
+    assert not (tmp_path / "run_manifest.json").exists()
 
 
 def test_pipeline_turns_malformed_webull_payload_into_safe_partial_result(

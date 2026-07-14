@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from webull.core.exception.exceptions import ClientException, ServerException
 
 from webull_lab.account import ResponseError
 from webull_lab.exports import STATEMENT_NAMES, write_company_artifacts
@@ -67,7 +68,7 @@ def run_company_pipeline(
     if data_client is not None:
         try:
             payload = get_daily_stock_bars(data_client, symbol)
-        except (ResponseError, RuntimeError, ValueError):
+        except (ResponseError, ClientException, ServerException, RuntimeError, ValueError):
             warnings.append(SAFE_WEBULL_WARNING)
         else:
             try:
