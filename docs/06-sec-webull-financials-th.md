@@ -66,6 +66,12 @@ SEC_CONTACT_EMAIL=your_monitored_email@example.com
 webull-lab company-data AAPL --years 5
 ```
 
+`--years` ใช้กับทั้งงบ SEC และช่วงราคา Webull ไม่ใช่เฉพาะงบ Pipeline ส่ง
+`start_time`/`end_time` ตามช่วงปฏิทินที่ขอ และ paginate ย้อนหลังเมื่อเกินเพดาน 1,200 bars
+ต่อคำขอของ SDK โดยเว้นจังหวะระหว่างหน้าให้สอดคล้องกับ rate limit ของ endpoint
+หากหุ้นเพิ่งเข้าตลาด, permission จำกัด หรือ pagination ไปไม่ถึงขอบเขตที่ขอ manifest จะ
+รายงาน `partial`/`unavailable` แทนการอ้างว่ามีประวัติครบ
+
 ค่าเริ่มต้นเขียนผลลัพธ์ใต้ `data/private/company-data/` ซึ่งถูก gitignore หากไม่มี Webull
 credentials pipeline จะทำงานแบบ SEC-only: `sec_status` ยังเป็น `available` และ
 `webull_status` เป็น `unavailable` โดย metrics ที่ต้องใช้ราคาจะอธิบาย input ที่ขาด
@@ -106,6 +112,10 @@ fallback; subscription ของ OpenAPI market data แยกจากสิท
 - Tables: งบทั้งสาม, prices และ metrics มี CSV/Parquet; `company_snapshot.json` เป็นสรุป
 - Manifest: `<output>/run_manifest.json` บันทึก ticker, CIK, requested years,
   `sec_status`, `webull_status`, cache status, warnings, missing metrics และรายชื่อไฟล์
+- Price coverage: `price_history` ใน manifest แยก requested start/end ออกจาก observed
+  start/end, จำนวน bars, จำนวนหน้าที่ขอ, สถานะ pagination และ `range_observed`/
+  `partial`/`unavailable` โดย `range_observed` หมายถึงเห็นข้อมูลใกล้ขอบช่วงทั้งสองด้าน
+  ไม่ได้รับรองว่าไม่มี trading session ใดขาดหาย จึงควรตรวจจำนวนแถวประกอบเสมอ
 
 Raw/cache/output ทั้งหมดเป็น private artifacts แม้ SEC payload จะเป็นข้อมูลสาธารณะ เพราะ
 directory เดียวกันอาจมี metadata จากการรันจริง Workflow live smoke จึง upload เฉพาะ

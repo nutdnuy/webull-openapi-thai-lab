@@ -117,6 +117,16 @@ def _metrics() -> pd.DataFrame:
 
 
 def test_write_company_artifacts_writes_exact_portable_artifact_set(tmp_path):
+    price_history = {
+        "status": "partial",
+        "requested_start_date": "2020-01-02",
+        "requested_end_date": "2025-01-02",
+        "observed_start_date": "2025-01-02",
+        "observed_end_date": "2025-01-02",
+        "observed_bar_count": 1,
+        "pages_requested": 1,
+        "pagination_complete": True,
+    }
     manifest = write_company_artifacts(
         tmp_path,
         "AAPL",
@@ -129,6 +139,7 @@ def test_write_company_artifacts_writes_exact_portable_artifact_set(tmp_path):
             "sec_submissions": {"name": "Apple Inc."},
             "sec_companyfacts": {"facts": {}},
         },
+        price_history=price_history,
     )
 
     expected = sorted(
@@ -161,6 +172,32 @@ def test_write_company_artifacts_writes_exact_portable_artifact_set(tmp_path):
     assert manifest["sec_status"] == "available"
     assert manifest["missing_metrics"] == ["pe"]
     assert manifest["run_timestamp"].endswith("+00:00")
+    assert manifest["price_history"] == price_history
+
+
+def test_write_company_artifacts_rejects_price_history_that_disagrees_with_prices(
+    tmp_path,
+):
+    with pytest.raises(ValueError, match="price history metadata is invalid"):
+        write_company_artifacts(
+            tmp_path,
+            "AAPL",
+            "0000320193",
+            _statements(),
+            _prices(),
+            _metrics(),
+            "available",
+            price_history={
+                "status": "partial",
+                "requested_start_date": "2020-01-02",
+                "requested_end_date": "2025-01-02",
+                "observed_start_date": "2024-01-02",
+                "observed_end_date": "2025-01-02",
+                "observed_bar_count": 252,
+                "pages_requested": 1,
+                "pagination_complete": True,
+            },
+        )
 
 
 def test_write_company_artifacts_preserves_decimal_and_date_in_parquet_and_csv(tmp_path):

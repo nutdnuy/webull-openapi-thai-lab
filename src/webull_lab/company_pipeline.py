@@ -10,7 +10,11 @@ from webull.core.exception.exceptions import ClientException, ServerException
 from webull_lab.account import ResponseError
 from webull_lab.exports import STATEMENT_NAMES, write_company_artifacts
 from webull_lab.financials import build_financial_statements
-from webull_lab.market_data import get_daily_stock_bars, normalize_stock_bars
+from webull_lab.market_data import (
+    fetch_daily_stock_history,
+    normalize_stock_bars,
+    price_history_metadata,
+)
 from webull_lab.metrics import build_financial_metrics
 
 SAFE_WEBULL_WARNING = (
@@ -64,19 +68,23 @@ def run_company_pipeline(
 
     warnings: list[str] = []
     prices = normalize_stock_bars([])
+    price_history = price_history_metadata(years, prices)
     webull_status = "unavailable"
     if data_client is not None:
         try:
-            payload = get_daily_stock_bars(data_client, symbol)
+            fetched_prices = fetch_daily_stock_history(data_client, symbol, years)
         except (ResponseError, ClientException, ServerException, RuntimeError, ValueError):
             warnings.append(SAFE_WEBULL_WARNING)
         else:
             try:
-                prices = normalize_stock_bars(payload)
+                prices = normalize_stock_bars(fetched_prices.payload)
             except ValueError:
                 warnings.append(SAFE_WEBULL_WARNING)
             else:
                 webull_status = "available"
+                price_history = price_history_metadata(
+                    years, prices, fetch=fetched_prices
+                )
 
     metrics = build_financial_metrics(statements, prices)
     return write_company_artifacts(
@@ -94,4 +102,5 @@ def run_company_pipeline(
             "sec_companyfacts": companyfacts,
         },
         cache_status=cache_status,
+        price_history=price_history,
     )

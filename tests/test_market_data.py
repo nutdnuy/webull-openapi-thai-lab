@@ -3,7 +3,7 @@ import io
 import json
 import logging
 import sys
-from datetime import date
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 
@@ -12,10 +12,13 @@ import pyarrow.parquet as pq
 import pytest
 
 from webull_lab.market_data import (
+    PriceHistoryFetch,
+    fetch_daily_stock_history,
     get_daily_stock_bars,
     get_stock_bars,
     get_stock_snapshot,
     normalize_stock_bars,
+    price_history_metadata,
 )
 
 BAR_COLUMNS = ["symbol", "date", "open", "high", "low", "close", "volume"]
@@ -114,6 +117,152 @@ def test_get_daily_stock_bars_requests_daily_timespan():
 
     assert payload == [{"symbol": "AAPL", "close": "200.00"}]
     assert client.market_data.calls == [("bars", "AAPL", "US_STOCK", "D")]
+
+
+def _bar(symbol, day):
+    timestamp = int(datetime.combine(day, time(), tzinfo=UTC).timestamp() * 1000)
+    return {
+        "symbol": symbol,
+        "time": str(timestamp),
+        "open": "1",
+        "high": "1",
+        "low": "1",
+        "close": "1",
+        "volume": "1",
+    }
+
+
+class PaginatedMarketData:
+    def __init__(self, pages):
+        self.pages = list(pages)
+        self.calls = []
+
+    def get_history_bar(self, symbol, category, timespan, **kwargs):
+        self.calls.append((symbol, category, timespan, kwargs))
+        return FakeResponse(self.pages.pop(0))
+
+
+def test_fetch_daily_stock_history_paginates_to_requested_year_boundary(monkeypatch):
+    monkeypatch.setattr("webull_lab.market_data.MAX_BAR_COUNT", 2)
+    monkeypatch.setattr("webull_lab.market_data.sleep", lambda _seconds: None)
+    pages = [
+        [_bar("AAPL", date(2025, 1, 10)), _bar("AAPL", date(2024, 6, 1))],
+        [_bar("AAPL", date(2024, 1, 10)), _bar("AAPL", date(2024, 1, 9))],
+    ]
+    client = FakeDataClient()
+    client.market_data = PaginatedMarketData(pages)
+
+    result = fetch_daily_stock_history(
+        client, " aapl ", years=1, as_of=date(2025, 1, 10)
+    )
+
+    assert isinstance(result, PriceHistoryFetch)
+    assert result.requested_start_date == date(2024, 1, 10)
+    assert result.requested_end_date == date(2025, 1, 10)
+    assert result.pages_requested == 2
+    assert result.pagination_complete is True
+    assert [row["time"] for row in result.payload] == [
+        _bar("AAPL", date(2025, 1, 10))["time"],
+        _bar("AAPL", date(2024, 6, 1))["time"],
+        _bar("AAPL", date(2024, 1, 10))["time"],
+    ]
+    first = client.market_data.calls[0]
+    second = client.market_data.calls[1]
+    assert first[:3] == ("AAPL", "US_STOCK", "D")
+    assert first[3]["count"] == "2"
+    assert first[3]["start_time"] == int(
+        datetime(2024, 1, 10, tzinfo=UTC).timestamp() * 1000
+    )
+    assert first[3]["end_time"] == int(
+        datetime(2025, 1, 11, tzinfo=UTC).timestamp() * 1000
+    ) - 1
+    assert second[3]["end_time"] == int(
+        datetime(2024, 6, 1, tzinfo=UTC).timestamp() * 1000
+    ) - 1
+
+
+def test_fetch_daily_stock_history_stops_on_short_page_and_deduplicates(monkeypatch):
+    monkeypatch.setattr("webull_lab.market_data.MAX_BAR_COUNT", 3)
+    page = [
+        _bar("MSFT", date(2025, 1, 10)),
+        _bar("MSFT", date(2025, 1, 10)),
+    ]
+    client = FakeDataClient()
+    client.market_data = PaginatedMarketData([page])
+
+    result = fetch_daily_stock_history(
+        client, "MSFT", years=5, as_of=date(2025, 1, 10)
+    )
+
+    assert len(result.payload) == 1
+    assert result.pages_requested == 1
+    assert result.pagination_complete is True
+
+
+@pytest.mark.parametrize("years", [True, 0, -1, 1.5, "5"])
+def test_fetch_daily_stock_history_rejects_invalid_years(years):
+    with pytest.raises(ValueError, match="years must be a positive integer"):
+        fetch_daily_stock_history(FakeDataClient(), "AAPL", years=years)
+
+
+def test_price_history_metadata_reports_observed_range_boundaries():
+    fetch = PriceHistoryFetch(
+        payload=[],
+        requested_start_date=date(2024, 1, 10),
+        requested_end_date=date(2025, 1, 10),
+        pages_requested=2,
+        pagination_complete=True,
+    )
+    prices = normalize_stock_bars(
+        [_bar("AAPL", date(2024, 1, 10)), _bar("AAPL", date(2025, 1, 10))]
+    )
+
+    metadata = price_history_metadata(1, prices, fetch=fetch)
+
+    assert metadata == {
+        "status": "range_observed",
+        "requested_start_date": "2024-01-10",
+        "requested_end_date": "2025-01-10",
+        "observed_start_date": "2024-01-10",
+        "observed_end_date": "2025-01-10",
+        "observed_bar_count": 2,
+        "pages_requested": 2,
+        "pagination_complete": True,
+    }
+
+
+def test_price_history_metadata_does_not_call_short_history_complete():
+    fetch = PriceHistoryFetch(
+        payload=[],
+        requested_start_date=date(2020, 1, 10),
+        requested_end_date=date(2025, 1, 10),
+        pages_requested=1,
+        pagination_complete=True,
+    )
+    prices = normalize_stock_bars([_bar("NEW", date(2024, 6, 1))])
+
+    metadata = price_history_metadata(5, prices, fetch=fetch)
+
+    assert metadata["status"] == "partial"
+    assert metadata["observed_start_date"] == "2024-06-01"
+    assert metadata["observed_bar_count"] == 1
+
+
+def test_price_history_metadata_reports_unavailable_without_prices():
+    metadata = price_history_metadata(
+        5,
+        normalize_stock_bars([]),
+        as_of=date(2025, 1, 10),
+    )
+
+    assert metadata["status"] == "unavailable"
+    assert metadata["requested_start_date"] == "2020-01-10"
+    assert metadata["requested_end_date"] == "2025-01-10"
+    assert metadata["observed_start_date"] is None
+    assert metadata["observed_end_date"] is None
+    assert metadata["observed_bar_count"] == 0
+    assert metadata["pages_requested"] == 0
+    assert metadata["pagination_complete"] is False
 
 
 def test_market_data_sdk_calls_suppress_output_and_restore_logging_state(

@@ -22,6 +22,7 @@ from webull_lab.metrics import METRIC_COLUMNS
 STATEMENT_NAMES = ("income_statement", "balance_sheet", "cash_flow")
 WEBULL_STATUSES = frozenset({"available", "unavailable"})
 CACHE_STATUSES = frozenset({"hit", "miss", "unknown"})
+PRICE_HISTORY_STATUSES = frozenset({"range_observed", "partial", "unavailable"})
 _RAW_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _DECIMAL_TYPE = pa.decimal256(76, 30)
 _PRICE_DECIMAL_TYPE = pa.decimal128(20, 8)
@@ -80,7 +81,8 @@ def _validate_inputs(
     warnings: Sequence[str] | None,
     raw_payloads: Mapping[str, Mapping[str, Any]] | None,
     cache_status: str,
-) -> tuple[list[str], dict[str, Mapping[str, Any]]]:
+    price_history: Mapping[str, Any] | None,
+) -> tuple[list[str], dict[str, Mapping[str, Any]], dict[str, Any] | None]:
     if (
         not isinstance(ticker, str)
         or not ticker.strip()
@@ -125,7 +127,81 @@ def _validate_inputs(
             if not isinstance(payload, Mapping):
                 raise ValueError("raw payloads are invalid")
             validated_raw[name] = payload
-    return sanitized_warnings, validated_raw
+    validated_price_history = _validate_price_history(price_history, prices)
+    return sanitized_warnings, validated_raw, validated_price_history
+
+
+def _validate_price_history(
+    price_history: Mapping[str, Any] | None,
+    prices: pd.DataFrame,
+) -> dict[str, Any] | None:
+    if price_history is None:
+        return None
+    expected = {
+        "status",
+        "requested_start_date",
+        "requested_end_date",
+        "observed_start_date",
+        "observed_end_date",
+        "observed_bar_count",
+        "pages_requested",
+        "pagination_complete",
+    }
+    if not isinstance(price_history, Mapping) or set(price_history) != expected:
+        raise ValueError("price history metadata is invalid")
+    try:
+        requested_start = date.fromisoformat(price_history["requested_start_date"])
+        requested_end = date.fromisoformat(price_history["requested_end_date"])
+        observed_start = (
+            date.fromisoformat(price_history["observed_start_date"])
+            if price_history["observed_start_date"] is not None
+            else None
+        )
+        observed_end = (
+            date.fromisoformat(price_history["observed_end_date"])
+            if price_history["observed_end_date"] is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        raise ValueError("price history metadata is invalid") from None
+    status = price_history["status"]
+    observed_count = price_history["observed_bar_count"]
+    pages_requested = price_history["pages_requested"]
+    pagination_complete = price_history["pagination_complete"]
+    actual_dates: list[date] = []
+    if "date" in prices:
+        for value in prices["date"].dropna().tolist():
+            try:
+                actual_dates.append(
+                    value if type(value) is date else date.fromisoformat(value)
+                )
+            except (TypeError, ValueError):
+                raise ValueError("price history metadata is invalid") from None
+    actual_start = min(actual_dates) if actual_dates else None
+    actual_end = max(actual_dates) if actual_dates else None
+    if (
+        status not in PRICE_HISTORY_STATUSES
+        or requested_start > requested_end
+        or isinstance(observed_count, bool)
+        or not isinstance(observed_count, int)
+        or observed_count < 0
+        or isinstance(pages_requested, bool)
+        or not isinstance(pages_requested, int)
+        or pages_requested < 0
+        or not isinstance(pagination_complete, bool)
+        or (observed_count == 0) != (observed_start is None and observed_end is None)
+        or (
+            observed_start is not None
+            and observed_end is not None
+            and observed_start > observed_end
+        )
+        or (status == "unavailable") != (observed_count == 0)
+        or observed_count != len(prices)
+        or observed_start != actual_start
+        or observed_end != actual_end
+    ):
+        raise ValueError("price history metadata is invalid")
+    return dict(price_history)
 
 
 def _is_null(value: object, *, allow_scalar_nan: bool = False) -> bool:
@@ -319,8 +395,9 @@ def write_company_artifacts(
     warnings: list[str] | None = None,
     raw_payloads: dict[str, dict[str, Any]] | None = None,
     cache_status: str = "unknown",
+    price_history: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    sanitized_warnings, validated_raw = _validate_inputs(
+    sanitized_warnings, validated_raw, validated_price_history = _validate_inputs(
         ticker,
         cik,
         statements,
@@ -331,6 +408,7 @@ def write_company_artifacts(
         warnings,
         raw_payloads,
         cache_status,
+        price_history,
     )
     canonical_statements = {
         name: _canonical_table(statements[name], STATEMENT_SCHEMA, name)
@@ -370,6 +448,8 @@ def write_company_artifacts(
         "missing_metrics": missing_metrics,
         "files": files,
     }
+    if validated_price_history is not None:
+        manifest["price_history"] = validated_price_history
 
     with tempfile.TemporaryDirectory(
         prefix=".company-artifacts-", dir=directory.parent

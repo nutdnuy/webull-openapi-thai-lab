@@ -1,5 +1,6 @@
 import copy
 import json
+from datetime import date
 from decimal import Decimal
 
 import pandas as pd
@@ -8,6 +9,7 @@ from webull.core.exception.exceptions import ClientException, ServerException
 
 from webull_lab.company_pipeline import run_company_pipeline
 from webull_lab.financials import OUTPUT_COLUMNS
+from webull_lab.market_data import PriceHistoryFetch
 from webull_lab.sec_client import SecDataError
 
 STATEMENT_NAMES = ("income_statement", "balance_sheet", "cash_flow")
@@ -43,6 +45,16 @@ def _empty_statements():
     return {name: pd.DataFrame(columns=OUTPUT_COLUMNS) for name in STATEMENT_NAMES}
 
 
+def _history(payload):
+    return PriceHistoryFetch(
+        payload=payload,
+        requested_start_date=date(2020, 1, 1),
+        requested_end_date=date(2025, 1, 1),
+        pages_requested=1,
+        pagination_complete=True,
+    )
+
+
 def test_pipeline_completes_sec_only_when_webull_is_absent(tmp_path):
     sec_client = FakeSecClient()
 
@@ -52,6 +64,8 @@ def test_pipeline_completes_sec_only_when_webull_is_absent(tmp_path):
     assert result["webull_status"] == "unavailable"
     assert result["warnings"] == []
     assert result["cache_status"] == "miss"
+    assert result["price_history"]["status"] == "unavailable"
+    assert result["price_history"]["observed_bar_count"] == 0
     assert sec_client.calls == [
         ("resolve_cik", "AAPL"),
         ("get_submissions", "0000320193"),
@@ -79,8 +93,8 @@ def test_pipeline_successfully_normalizes_webull_bars_and_computes_metrics(
     ]
     captured = {}
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars",
-        lambda client, symbol: raw_bars,
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
+        lambda client, symbol, years: _history(raw_bars),
     )
 
     def fake_metrics(statements, prices):
@@ -96,6 +110,16 @@ def test_pipeline_successfully_normalizes_webull_bars_and_computes_metrics(
 
     assert result["webull_status"] == "available"
     assert result["cache_status"] == "hit"
+    assert result["price_history"] == {
+        "status": "partial",
+        "requested_start_date": "2020-01-01",
+        "requested_end_date": "2025-01-01",
+        "observed_start_date": "2024-11-01",
+        "observed_end_date": "2024-11-01",
+        "observed_bar_count": 1,
+        "pages_requested": 1,
+        "pagination_complete": True,
+    }
     assert captured["prices"].loc[0, "close"] == Decimal("222.91")
     assert captured["statements"].keys() == set(STATEMENT_NAMES)
     assert json.loads((tmp_path / "run_manifest.json").read_text())["years"] == 3
@@ -124,7 +148,7 @@ def test_pipeline_turns_expected_webull_failure_into_safe_partial_result(
 ):
     secret = "WEBULL_APP_SECRET=do-not-leak-this"
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars",
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
         lambda *args: (_ for _ in ()).throw(exception_type(secret)),
     )
 
@@ -148,7 +172,7 @@ def test_pipeline_turns_sdk_fetch_failure_into_safe_partial_result(
 ):
     marker = "WEBULL_MARKER_SECRET"
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars",
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
         lambda *args: (_ for _ in ()).throw(sdk_error),
     )
 
@@ -166,7 +190,8 @@ def test_pipeline_turns_sdk_fetch_failure_into_safe_partial_result(
 
 def test_pipeline_does_not_catch_sdk_exception_from_normalization(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars", lambda *args: [{"raw": "bar"}]
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
+        lambda *args: _history([{"raw": "bar"}]),
     )
 
     def fail_normalization(payload):
@@ -186,7 +211,8 @@ def test_pipeline_turns_malformed_webull_payload_into_safe_partial_result(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars", lambda *args: {"bad": "shape"}
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
+        lambda *args: _history({"bad": "shape"}),
     )
 
     result = run_company_pipeline("AAPL", 5, tmp_path, FakeSecClient(), data_client=object())
@@ -208,7 +234,8 @@ def test_pipeline_propagates_unexpected_runtime_error_from_normalization(
         raise RuntimeError("normalizer bug")
 
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars", lambda *args: [{"raw": "bar"}]
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
+        lambda *args: _history([{"raw": "bar"}]),
     )
     monkeypatch.setattr(
         "webull_lab.company_pipeline.normalize_stock_bars",
@@ -234,7 +261,7 @@ def test_pipeline_propagates_sec_failure_without_writing_manifest(tmp_path):
 
 def test_pipeline_propagates_unexpected_webull_programming_error(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "webull_lab.company_pipeline.get_daily_stock_bars",
+        "webull_lab.company_pipeline.fetch_daily_stock_history",
         lambda *args: (_ for _ in ()).throw(TypeError("programming bug")),
     )
 
