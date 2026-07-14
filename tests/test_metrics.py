@@ -405,9 +405,9 @@ def test_builder_rejects_invalid_fiscal_years_safely(fiscal_year):
 
 
 def test_metrics_compose_with_financial_statement_real_fiscal_years():
-    def observation(value, fiscal_year, end, filed, accession):
+    def observation(value, fiscal_year, start, end, filed, accession):
         return {
-            "start": f"{int(fiscal_year) - 1}-10-01",
+            "start": start,
             "end": end,
             "val": value,
             "accn": accession,
@@ -424,8 +424,30 @@ def test_metrics_compose_with_financial_statement_real_fiscal_years():
                 "Revenues": {
                     "units": {
                         "USD": [
-                            observation(100, 2023.0, "2023-09-30", "2023-11-01", "a"),
-                            observation(120, 2024.0, "2024-09-28", "2024-11-01", "b"),
+                            observation(
+                                100,
+                                2023.0,
+                                "2022-10-01",
+                                "2023-09-30",
+                                "2023-11-01",
+                                "prior-original",
+                            ),
+                            observation(
+                                101,
+                                2024.0,
+                                "2022-10-01",
+                                "2023-09-30",
+                                "2024-11-01",
+                                "prior-represented",
+                            ),
+                            observation(
+                                120,
+                                2024.0,
+                                "2023-10-01",
+                                "2024-09-28",
+                                "2024-11-01",
+                                "current",
+                            ),
                         ]
                     }
                 }
@@ -433,10 +455,15 @@ def test_metrics_compose_with_financial_statement_real_fiscal_years():
         }
     }
     statements = build_financial_statements("AAPL", "320193", payload)
+    revenue = statements["income_statement"]
 
     result = build_financial_metrics(statements, pd.DataFrame()).set_index("metric")
 
-    assert result.loc["revenue_growth", "value"] == Decimal("0.2")
+    assert revenue["fiscal_year"].tolist() == [2023.0, 2024.0]
+    assert revenue.iloc[0]["accession_number"] == "prior-represented"
+    assert result.loc["revenue_growth", "value"] == (
+        Decimal("120") / Decimal("101") - Decimal("1")
+    )
     assert result.loc["revenue_growth", "current_period"] == 2024
 
 

@@ -336,7 +336,7 @@ def build_financial_statements(
         _select_rows(_candidate_rows(normalized_ticker, normalized_cik, us_gaap)), years
     )
     for row in rows:
-        row.pop("economic_fiscal_year")
+        row["fiscal_year"] = row.pop("economic_fiscal_year")
     rows.sort(key=_sort_key)
     statements: dict[str, pd.DataFrame] = {}
     for statement in CANONICAL_TAGS:

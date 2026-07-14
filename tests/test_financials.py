@@ -300,9 +300,38 @@ def test_same_economic_period_deduplicates_across_changed_filing_metadata():
 
     assert len(rows) == 1
     assert rows.iloc[0]["accession_number"] == "later"
-    assert rows.iloc[0]["fiscal_year"] == 2025
+    assert rows.iloc[0]["fiscal_year"] == 2024
     assert rows.iloc[0]["fiscal_period"] == "Q3"
     assert rows.iloc[0]["superseded_accessions"] == '["original"]'
+
+
+def test_comparative_annual_presentation_keeps_original_economic_fiscal_year():
+    original = observation(
+        100,
+        start="2022-10-01",
+        end="2023-09-30",
+        fiscal_year=2023,
+        accession="fy23-original",
+        filed="2023-11-01",
+    )
+    repeated = observation(
+        101,
+        start="2022-10-01",
+        end="2023-09-30",
+        fiscal_year=2024,
+        accession="fy23-in-fy24-10k",
+        filed="2024-11-01",
+    )
+
+    row = build_financial_statements(
+        "AAPL", "320193", payload_for("Revenues", [original, repeated])
+    )["income_statement"].iloc[0]
+
+    assert row["fiscal_year"] == 2023
+    assert row["value"] == 101
+    assert row["filed_date"] == "2024-11-01"
+    assert row["accession_number"] == "fy23-in-fy24-10k"
+    assert row["superseded_accessions"] == '["fy23-original"]'
 
 
 def test_economic_dedup_ignores_differing_inferred_period_types():
