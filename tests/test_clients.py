@@ -55,15 +55,15 @@ class LoggingSdkClient:
         logging.getLogger("webull.core.client").error(
             "signed request app_key=%s signature=%s", self.marker, self.marker
         )
+        logging.getLogger("webull.core.http.response").debug(
+            "x-app-key=%s x-signature=%s", self.marker, self.marker
+        )
 
 
 class FailingLoggingSdkClient(LoggingSdkClient):
     def __init__(self, api_client):
         super().__init__(api_client)
         raise RuntimeError(self.marker)
-        logging.getLogger("webull.core.http.response").debug(
-            "x-app-key=%s x-signature=%s", self.marker, self.marker
-        )
 
 
 def make_settings() -> Settings:

@@ -1,3 +1,7 @@
+import io
+import logging
+import sys
+
 import pytest
 
 from webull_lab.config import Settings
@@ -42,6 +46,26 @@ class FakeOrderV2:
 class FakeTradeClient:
     def __init__(self, order_v2=None):
         self.order_v2 = order_v2 or FakeOrderV2()
+
+
+class LoggingOrderV2(FakeOrderV2):
+    marker = "MARKER_ORDER_SECRET_MUST_NOT_LEAK"
+
+    def _emit_secret_output(self):
+        print(f"stdout x-app-key={self.marker}")
+        print(f"stderr x-signature={self.marker}", file=sys.stderr)
+        logging.getLogger("webull").critical("x-app-key=%s", self.marker)
+        logging.getLogger("webull.core.http.response").critical(
+            "x-signature=%s", self.marker
+        )
+
+    def preview_order(self, account_id, orders):
+        self._emit_secret_output()
+        return super().preview_order(account_id, orders)
+
+    def place_order(self, account_id, orders):
+        self._emit_secret_output()
+        return super().place_order(account_id, orders)
 
 
 def make_settings() -> Settings:
@@ -157,3 +181,77 @@ def test_place_stock_limit_buy_requires_account_id(monkeypatch):
         place_stock_limit_buy(client, settings, "AAPL", "100", "1")
 
     assert client.order_v2.place_calls == []
+
+
+def test_order_sdk_calls_suppress_secrets_and_restore_process_state(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    marker = LoggingOrderV2.marker
+    order_client = LoggingOrderV2()
+    client = FakeTradeClient(order_client)
+    live_settings = Settings(
+        env="uat",
+        region="us",
+        app_key="key_123",
+        app_secret="secret_456",
+        account_id="acct_1",
+        token_dir=None,
+        live_orders_enabled=True,
+    )
+    webull_logger = logging.getLogger("webull")
+    response_logger = logging.getLogger("webull.core.http.response")
+    webull_handler = logging.StreamHandler(io.StringIO())
+    response_handler = logging.StreamHandler(io.StringIO())
+    monkeypatch.setattr(webull_logger, "handlers", [webull_handler])
+    monkeypatch.setattr(webull_logger, "level", logging.WARNING)
+    monkeypatch.setattr(webull_logger, "disabled", False)
+    monkeypatch.setattr(webull_logger, "propagate", False)
+    monkeypatch.setattr(response_logger, "handlers", [response_handler])
+    monkeypatch.setattr(response_logger, "level", logging.DEBUG)
+    monkeypatch.setattr(response_logger, "disabled", False)
+    monkeypatch.setattr(response_logger, "propagate", True)
+    monkeypatch.setattr(logging.root.manager, "disable", 7)
+    expected_webull_state = (
+        tuple(webull_logger.handlers),
+        webull_logger.level,
+        webull_logger.disabled,
+        webull_logger.propagate,
+    )
+    expected_response_state = (
+        tuple(response_logger.handlers),
+        response_logger.level,
+        response_logger.disabled,
+        response_logger.propagate,
+    )
+    stdout_before = sys.stdout
+    stderr_before = sys.stderr
+
+    preview = preview_stock_limit_buy(client, "acct_1", "AAPL", "100", "1")
+    placed = place_stock_limit_buy(client, live_settings, "AAPL", "100", "1")
+
+    captured = capsys.readouterr()
+    assert preview["preview"] == "ok"
+    assert placed["place"] == "ok"
+    assert len(order_client.preview_calls) == 1
+    assert len(order_client.place_calls) == 1
+    assert marker not in captured.out
+    assert marker not in captured.err
+    assert marker not in webull_handler.stream.getvalue()
+    assert marker not in response_handler.stream.getvalue()
+    assert not (tmp_path / "webull_trade_sdk.log").exists()
+    assert logging.root.manager.disable == 7
+    assert sys.stdout is stdout_before
+    assert sys.stderr is stderr_before
+    assert (
+        tuple(webull_logger.handlers),
+        webull_logger.level,
+        webull_logger.disabled,
+        webull_logger.propagate,
+    ) == expected_webull_state
+    assert (
+        tuple(response_logger.handlers),
+        response_logger.level,
+        response_logger.disabled,
+        response_logger.propagate,
+    ) == expected_response_state
