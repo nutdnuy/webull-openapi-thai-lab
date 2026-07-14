@@ -24,12 +24,13 @@ def _fact(
     filed_date: str,
     *,
     ticker: str = "AAPL",
+    unit: str = "USD",
 ) -> dict[str, object]:
     return {
         "ticker": ticker,
         "canonical_metric": metric,
         "value": value,
-        "unit": "USD",
+        "unit": unit,
         "fiscal_year": fiscal_year,
         "period_type": "annual",
         "end_date": f"{fiscal_year}-09-30",
@@ -72,11 +73,20 @@ def test_ratio_and_growth_statuses_distinguish_missing_from_zero_denominator():
         lambda: MetricResult("roe", Decimal("1"), "missing_input", date(2025, 1, 1)),
         lambda: MetricResult("roe", None, "available", date(2025, 1, 1)),
         lambda: MetricResult("roe", None, "unexpected", date(2025, 1, 1)),
+        lambda: MetricResult(
+            "roe", Decimal("1"), "incompatible_unit", date(2025, 1, 1)
+        ),
     ],
 )
 def test_metric_result_rejects_inconsistent_status_semantics(constructor):
     with pytest.raises(ValueError, match="MetricResult is invalid"):
         constructor()
+
+
+def test_metric_result_accepts_incompatible_unit_without_value():
+    assert MetricResult(
+        "roe", None, "incompatible_unit", date(2025, 1, 1)
+    ).status == "incompatible_unit"
 
 
 @pytest.mark.parametrize(
@@ -333,6 +343,62 @@ def test_build_financial_metrics_calculates_all_supported_non_price_metrics():
     assert result.loc["free_cash_flow", "status"] == "available"
 
 
+def test_builder_marks_incompatible_statement_units_without_calculating():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 100, 2023, "2023-11-01", unit="EUR"),
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("gross_profit", 48, 2024, "2024-11-01", unit="EUR"),
+            _fact("net_income", 24, 2024, "2024-11-01"),
+        ]
+    )
+    balance = pd.DataFrame(
+        [
+            _fact("stockholders_equity", 50, 2023, "2023-11-01", unit="EUR"),
+            _fact("stockholders_equity", 70, 2024, "2024-11-01"),
+        ]
+    )
+    cash_flow = pd.DataFrame(
+        [
+            _fact("operating_cash_flow", 50, 2024, "2024-11-01"),
+            _fact("capital_expenditure", 12, 2024, "2024-11-01", unit="EUR"),
+        ]
+    )
+
+    result = build_financial_metrics(
+        {
+            "income_statement": income,
+            "balance_sheet": balance,
+            "cash_flow": cash_flow,
+        },
+        pd.DataFrame(),
+    ).set_index("metric")
+
+    for metric in ("revenue_growth", "gross_margin", "roe", "free_cash_flow"):
+        assert result.loc[metric, "status"] == "incompatible_unit"
+        assert result.loc[metric, "value"] is None
+
+
+def test_pe_requires_sec_usd_per_share_unit():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("diluted_eps", 6, 2024, "2024-11-01", unit="shares"),
+        ]
+    )
+    prices = pd.DataFrame(
+        {"date": [date(2024, 11, 1)], "close": [Decimal("222")]}
+    )
+
+    pe = build_financial_metrics(
+        {"income_statement": income}, prices
+    ).set_index("metric").loc["pe"]
+
+    assert pe["status"] == "incompatible_unit"
+    assert pe["value"] is None
+    assert pe["price_date"] == "2024-11-01"
+
+
 def test_builder_handles_missing_statement_keys_and_no_annual_input():
     result = build_financial_metrics({}, pd.DataFrame())
 
@@ -491,7 +557,7 @@ def test_builder_rejects_ambiguous_duplicate_facts():
         build_financial_metrics({"income_statement": income}, pd.DataFrame())
 
 
-def test_metric_timing_ignores_irrelevant_and_future_filed_facts():
+def test_latest_metric_table_uses_prior_amendment_from_its_filing_date():
     income = pd.DataFrame(
         [
             _fact("revenue", 100, 2023, "2023-11-01"),
@@ -505,8 +571,8 @@ def test_metric_timing_ignores_irrelevant_and_future_filed_facts():
         {"income_statement": income}, pd.DataFrame()
     ).set_index("metric")
 
-    assert result.loc["revenue_growth", "value"] == Decimal("0.2")
-    assert result.loc["revenue_growth", "available_date"] == "2024-11-01"
+    assert result.loc["revenue_growth", "value"] == Decimal("0.5")
+    assert result.loc["revenue_growth", "available_date"] == "2024-12-01"
 
 
 def test_pe_uses_latest_eps_filing_and_matching_ticker_price():
@@ -514,8 +580,8 @@ def test_pe_uses_latest_eps_filing_and_matching_ticker_price():
         [
             _fact("revenue", 100, 2023, "2023-11-01"),
             _fact("revenue", 120, 2024, "2024-11-01"),
-            _fact("diluted_eps", 6, 2024, "2024-11-01"),
-            _fact("diluted_eps", 5, 2024, "2024-11-15"),
+            _fact("diluted_eps", 6, 2024, "2024-11-01", unit="USD/shares"),
+            _fact("diluted_eps", 5, 2024, "2024-11-15", unit="USD/shares"),
         ]
     )
     prices = pd.DataFrame(
@@ -552,3 +618,77 @@ def test_pe_is_missing_without_eps_even_if_prices_end_before_filing():
 
     assert pe["status"] == "missing_input"
     assert pe["price_date"] is None
+
+
+def test_stale_valid_price_is_missing_for_pe_without_aborting_other_metrics():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 100, 2023, "2023-11-01"),
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("diluted_eps", 6, 2024, "2024-11-01", unit="USD/shares"),
+        ]
+    )
+    prices = pd.DataFrame(
+        {"date": [date(2024, 10, 31)], "close": [Decimal("220")]}
+    )
+
+    result = build_financial_metrics(
+        {"income_statement": income}, prices
+    ).set_index("metric")
+
+    assert result.loc["revenue_growth", "value"] == Decimal("0.2")
+    assert result.loc["pe", "status"] == "missing_input"
+    assert result.loc["pe", "price_date"] is None
+
+
+def test_builder_does_not_suppress_malformed_price_errors():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("diluted_eps", 6, 2024, "2024-11-01", unit="USD/shares"),
+        ]
+    )
+    prices = pd.DataFrame({"date": ["bad-date"], "close": [Decimal("220")]})
+
+    with pytest.raises(ValueError, match="price data is invalid"):
+        build_financial_metrics({"income_statement": income}, prices)
+
+
+def test_price_to_book_metadata_uses_equity_not_pe_inputs():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("diluted_eps", 6, 2024, "2024-11-15", unit="USD/shares"),
+        ]
+    )
+    balance = pd.DataFrame(
+        [_fact("stockholders_equity", 70, 2024, "2024-11-05")]
+    )
+    prices = pd.DataFrame(
+        {"date": [date(2024, 11, 15)], "close": [Decimal("222")]}
+    )
+
+    price_to_book = build_financial_metrics(
+        {"income_statement": income, "balance_sheet": balance}, prices
+    ).set_index("metric").loc["price_to_book"]
+
+    assert price_to_book["status"] == "missing_input"
+    assert price_to_book["available_date"] == "2024-11-05"
+    assert price_to_book["price_date"] is None
+
+
+def test_price_to_book_without_equity_uses_current_income_base_date():
+    income = pd.DataFrame(
+        [
+            _fact("revenue", 120, 2024, "2024-11-01"),
+            _fact("net_income", 24, 2024, "2024-11-15"),
+        ]
+    )
+    balance = pd.DataFrame([_fact("debt", 35, 2024, "2024-12-01")])
+
+    price_to_book = build_financial_metrics(
+        {"income_statement": income, "balance_sheet": balance}, pd.DataFrame()
+    ).set_index("metric").loc["price_to_book"]
+
+    assert price_to_book["available_date"] == "2024-11-15"
+    assert price_to_book["price_date"] is None

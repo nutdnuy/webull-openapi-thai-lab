@@ -130,7 +130,7 @@ def _validate_us_gaap(us_gaap: dict) -> None:
                 value = item.get("val")
                 if (
                     isinstance(value, bool)
-                    or not isinstance(value, (int, float))
+                    or not isinstance(value, int | float)
                     or (isinstance(value, float) and not math.isfinite(value))
                 ):
                     raise _financial_error("Company Facts observation value must be numeric")

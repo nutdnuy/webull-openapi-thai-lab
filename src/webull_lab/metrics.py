@@ -44,8 +44,15 @@ _FACT_COLUMNS = {
     "fiscal_year",
     "period_type",
     "filed_date",
+    "unit",
 }
-_STATUSES = {"available", "missing_input", "not_meaningful"}
+_STATUSES = {"available", "missing_input", "not_meaningful", "incompatible_unit"}
+# SEC Company Facts normalizes diluted EPS to this canonical USD-per-share unit.
+_SEC_USD_PER_SHARE_UNITS = frozenset({"USD/shares"})
+
+
+class _NoEligiblePriceError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -64,6 +71,7 @@ class MetricResult:
         valid_missing = self.value is None and self.status in {
             "missing_input",
             "not_meaningful",
+            "incompatible_unit",
         }
         if (
             not isinstance(self.metric, str)
@@ -79,6 +87,7 @@ class MetricResult:
 class _Fact:
     value: Decimal
     filed_date: date
+    unit: str
 
 
 def _validate_decimal_input(value: Decimal | None) -> None:
@@ -143,7 +152,9 @@ def align_price_on_or_after(prices: pd.DataFrame, filed_date: date) -> pd.Series
         "date", kind="stable"
     )
     if eligible.empty:
-        raise ValueError(f"No price on or after filing date {filed_date.isoformat()}")
+        raise _NoEligiblePriceError(
+            f"No price on or after filing date {filed_date.isoformat()}"
+        )
     return eligible.iloc[0].copy(deep=True)
 
 
@@ -206,6 +217,8 @@ def _validated_annual_frames(
                 or not row["ticker"].strip()
                 or not isinstance(row["canonical_metric"], str)
                 or not row["canonical_metric"].strip()
+                or not isinstance(row["unit"], str)
+                or not row["unit"].strip()
             ):
                 raise ValueError("financial facts are invalid")
             fiscal_years.append(_parse_fiscal_year(row["fiscal_year"]))
@@ -220,8 +233,6 @@ def _fact(
     frame: pd.DataFrame,
     metric: str,
     fiscal_year: int,
-    *,
-    not_after: date | None = None,
 ) -> _Fact | None:
     if frame.empty:
         return None
@@ -232,10 +243,6 @@ def _fact(
     if rows.empty:
         return None
     rows["_filed_date"] = rows["filed_date"].map(_parse_date)
-    if not_after is not None:
-        rows = rows.loc[rows["_filed_date"] <= not_after]
-    if rows.empty:
-        return None
     selected_date = max(rows["_filed_date"])
     selected = rows.loc[rows["_filed_date"] == selected_date]
     identities = {
@@ -248,7 +255,8 @@ def _fact(
     }
     if len(identities) != 1:
         raise ValueError("financial facts are ambiguous")
-    return _Fact(next(iter(identities))[0], selected_date)
+    value, unit, _ = next(iter(identities))
+    return _Fact(value, selected_date, unit)
 
 
 def _availability(base: date, *facts: _Fact | None) -> date:
@@ -260,6 +268,8 @@ def _ratio_result(
     metric: str, numerator: _Fact | None, denominator: _Fact | None, base: date
 ) -> MetricResult:
     available = _availability(base, numerator, denominator)
+    if numerator is not None and denominator is not None and numerator.unit != denominator.unit:
+        return MetricResult(metric, None, "incompatible_unit", available)
     return safe_ratio(
         metric,
         numerator.value if numerator else None,
@@ -276,12 +286,10 @@ def _growth_result(
     prior_year: int,
     base: date,
 ) -> MetricResult:
-    prior = (
-        _fact(frame, source_metric, prior_year, not_after=current.filed_date)
-        if current
-        else None
-    )
+    prior = _fact(frame, source_metric, prior_year) if current else None
     available = _availability(base, current, prior)
+    if current is not None and prior is not None and current.unit != prior.unit:
+        return MetricResult(metric, None, "incompatible_unit", available)
     return growth_rate(
         metric,
         current.value if current else None,
@@ -308,8 +316,7 @@ def _ticker_and_years(
     current_year = years[-1]
     current_dates = [
         _parse_date(row["filed_date"])
-        for frame in frames
-        for row in frame.loc[frame["fiscal_year"] == current_year].to_dict("records")
+        for row in income.loc[income["fiscal_year"] == current_year].to_dict("records")
     ]
     return next(iter(tickers)), years, max(current_dates)
 
@@ -404,34 +411,56 @@ def build_financial_metrics(
         prior_year,
     )
 
-    roe_date = _availability(base_date, net_income, equity)
     prior_equity = (
-        _fact(balance, "stockholders_equity", prior_year, not_after=roe_date)
+        _fact(balance, "stockholders_equity", prior_year)
         if equity and net_income
         else None
     )
+    roe_date = _availability(base_date, net_income, equity, prior_equity)
     average_equity = None
-    if equity is not None and prior_equity is not None:
+    roe_units_compatible = (
+        net_income is not None
+        and equity is not None
+        and prior_equity is not None
+        and len({net_income.unit, equity.unit, prior_equity.unit}) == 1
+    )
+    if roe_units_compatible:
         average_equity = (equity.value + prior_equity.value) / Decimal("2")
-    add(
-        safe_ratio(
+    roe = (
+        MetricResult("roe", None, "incompatible_unit", roe_date)
+        if net_income is not None
+        and equity is not None
+        and prior_equity is not None
+        and not roe_units_compatible
+        else safe_ratio(
             "roe",
             net_income.value if net_income else None,
             average_equity,
             roe_date,
-        ),
-        prior_year,
+        )
     )
+    add(roe, prior_year)
 
     fcf_date = _availability(base_date, operating_cash_flow, capital_expenditure)
     free_cash_flow = None
-    if operating_cash_flow is not None and capital_expenditure is not None:
+    fcf_units_compatible = (
+        operating_cash_flow is not None
+        and capital_expenditure is not None
+        and operating_cash_flow.unit == capital_expenditure.unit
+    )
+    if fcf_units_compatible:
         free_cash_flow = operating_cash_flow.value - capital_expenditure.value
     add(
         MetricResult(
             "free_cash_flow",
             free_cash_flow,
-            "available" if free_cash_flow is not None else "missing_input",
+            (
+                "available"
+                if free_cash_flow is not None
+                else "incompatible_unit"
+                if operating_cash_flow is not None and capital_expenditure is not None
+                else "missing_input"
+            ),
             fcf_date,
         )
     )
@@ -441,20 +470,31 @@ def build_financial_metrics(
     aligned_close = None
     ticker_prices = _prices_for_ticker(prices, ticker)
     if diluted_eps is not None and not ticker_prices.empty:
-        aligned = align_price_on_or_after(ticker_prices, pe_date)
-        price_date = aligned["date"].isoformat()
-        aligned_close = aligned["close"]
-    add(
-        safe_ratio(
+        try:
+            aligned = align_price_on_or_after(ticker_prices, pe_date)
+        except _NoEligiblePriceError:
+            pass
+        else:
+            price_date = aligned["date"].isoformat()
+            aligned_close = aligned["close"]
+    pe = (
+        MetricResult("pe", None, "incompatible_unit", pe_date)
+        if aligned_close is not None
+        and diluted_eps is not None
+        and diluted_eps.unit not in _SEC_USD_PER_SHARE_UNITS
+        else safe_ratio(
             "pe",
             aligned_close,
             diluted_eps.value if diluted_eps else None,
             pe_date,
-        ),
-        price_date=price_date,
+        )
     )
     add(
-        MetricResult("price_to_book", None, "missing_input", pe_date),
+        pe,
         price_date=price_date,
+    )
+    price_to_book_date = _availability(base_date, equity)
+    add(
+        MetricResult("price_to_book", None, "missing_input", price_to_book_date),
     )
     return pd.DataFrame(rows, columns=METRIC_COLUMNS)
