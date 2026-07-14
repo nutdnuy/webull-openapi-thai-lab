@@ -7,6 +7,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from webull.core.exception.exceptions import ClientException, ServerException
 
 from webull_lab.account import ResponseError, get_account_list
 from webull_lab.clients import build_data_client, build_trade_client
@@ -31,6 +32,19 @@ class PartialWebullCredentialsError(RuntimeError):
     pass
 
 
+class _UnavailableMarketData:
+    @staticmethod
+    def get_history_bar(*args, **kwargs):
+        raise RuntimeError("Webull market data client is unavailable")
+
+
+class _UnavailableDataClient:
+    market_data = _UnavailableMarketData()
+
+
+UNAVAILABLE_DATA_CLIENT = _UnavailableDataClient()
+
+
 def build_optional_data_client():
     app_key = os.getenv("WEBULL_APP_KEY", "").strip()
     app_secret = os.getenv("WEBULL_APP_SECRET", "").strip()
@@ -40,7 +54,11 @@ def build_optional_data_client():
         raise PartialWebullCredentialsError(
             "Set both WEBULL_APP_KEY and WEBULL_APP_SECRET, or leave both unset."
         )
-    return build_data_client(load_settings())
+    settings = load_settings()
+    try:
+        return build_data_client(settings)
+    except (ClientException, ServerException):
+        return UNAVAILABLE_DATA_CLIENT
 
 
 def print_company_data_error_and_exit(error: Exception) -> None:

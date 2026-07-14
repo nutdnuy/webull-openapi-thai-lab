@@ -3,10 +3,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
+from webull.core.exception.exceptions import ServerException
 
 import webull_lab.cli as cli_module
 from webull_lab.account import ResponseError
 from webull_lab.cli import app
+from webull_lab.company_pipeline import SAFE_WEBULL_WARNING
+from webull_lab.market_data import get_daily_stock_bars
 
 WEBULL_ENV_VARS = [
     "WEBULL_ENV",
@@ -411,3 +414,75 @@ def test_company_data_safely_reports_sec_and_output_errors(monkeypatch, tmp_path
         assert "Error:" in result.output
         assert marker_secret not in result.output
         assert "Traceback" not in result.output
+
+
+def test_company_data_degrades_sdk_init_failure_to_safe_sec_only_manifest(
+    monkeypatch, tmp_path
+):
+    prepare_company_data_env(monkeypatch, tmp_path)
+    marker_secret = "MARKER_SECRET_MUST_NOT_LEAK"
+    monkeypatch.setenv("WEBULL_APP_KEY", "test-key")
+    monkeypatch.setenv("WEBULL_APP_SECRET", marker_secret)
+    pipeline_calls = []
+    monkeypatch.setattr(cli_module, "SecClient", lambda settings: object())
+    monkeypatch.setattr(cli_module, "load_settings", lambda: object())
+
+    def fail_sdk_initialization(settings):
+        raise ServerException("SDK_INIT", marker_secret, 500, "request-id")
+
+    monkeypatch.setattr(cli_module, "build_data_client", fail_sdk_initialization)
+
+    def fake_run_company_pipeline(symbol, years, output_dir, sec_client, data_client):
+        pipeline_calls.append((symbol, years, output_dir, sec_client))
+        try:
+            get_daily_stock_bars(data_client, symbol)
+        except RuntimeError:
+            return {
+                "ticker": symbol,
+                "webull_status": "unavailable",
+                "warnings": [SAFE_WEBULL_WARNING],
+            }
+        raise AssertionError("unavailable Webull client did not fail at fetch boundary")
+
+    monkeypatch.setattr(cli_module, "run_company_pipeline", fake_run_company_pipeline)
+
+    result = CliRunner().invoke(app, ["company-data", "AAPL"])
+
+    assert result.exit_code == 0
+    assert '"ticker": "AAPL"' in result.output
+    assert '"webull_status": "unavailable"' in result.output
+    assert "Webull market data unavailable" in result.output
+    assert "SEC financial outputs were still" in result.output
+    assert len(pipeline_calls) == 1
+    assert marker_secret not in result.output
+    assert "Traceback" not in result.output
+
+
+def test_company_data_does_not_downgrade_unexpected_client_build_errors(
+    monkeypatch, tmp_path
+):
+    prepare_company_data_env(monkeypatch, tmp_path)
+    marker_secret = "MARKER_SECRET_MUST_NOT_LEAK"
+    monkeypatch.setenv("WEBULL_APP_KEY", "test-key")
+    monkeypatch.setenv("WEBULL_APP_SECRET", marker_secret)
+    pipeline_calls = []
+    monkeypatch.setattr(cli_module, "SecClient", lambda settings: object())
+    monkeypatch.setattr(cli_module, "load_settings", lambda: object())
+
+    def fail_with_programming_error(settings):
+        raise RuntimeError(marker_secret)
+
+    monkeypatch.setattr(cli_module, "build_data_client", fail_with_programming_error)
+    monkeypatch.setattr(
+        cli_module,
+        "run_company_pipeline",
+        lambda *args: pipeline_calls.append(args) or {},
+    )
+
+    result = CliRunner().invoke(app, ["company-data"])
+
+    assert result.exit_code == 1
+    assert "configuration or processing failed" in result.output
+    assert pipeline_calls == []
+    assert marker_secret not in result.output
+    assert "Traceback" not in result.output
