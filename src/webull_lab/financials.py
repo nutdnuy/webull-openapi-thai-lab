@@ -1,0 +1,364 @@
+from __future__ import annotations
+
+import json
+import math
+import re
+from numbers import Real
+from typing import Any
+
+import pandas as pd
+
+from webull_lab.sec_client import normalize_cik
+
+
+class FinancialDataError(ValueError):
+    """Raised when SEC Company Facts data is not safe to normalize."""
+
+
+CANONICAL_TAGS = {
+    "income_statement": {
+        "revenue": (
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "Revenues",
+        ),
+        "gross_profit": ("GrossProfit",),
+        "operating_income": ("OperatingIncomeLoss",),
+        "net_income": ("NetIncomeLoss", "ProfitLoss"),
+        "basic_eps": ("EarningsPerShareBasic",),
+        "diluted_eps": ("EarningsPerShareDiluted",),
+    },
+    "balance_sheet": {
+        "cash": (
+            "CashAndCashEquivalentsAtCarryingValue",
+            "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+        ),
+        "current_assets": ("AssetsCurrent",),
+        "total_assets": ("Assets",),
+        "current_liabilities": ("LiabilitiesCurrent",),
+        "total_liabilities": ("Liabilities",),
+        "debt": (
+            "LongTermDebtAndFinanceLeaseObligations",
+            "LongTermDebt",
+            "LongTermDebtNoncurrent",
+        ),
+        "stockholders_equity": ("StockholdersEquity",),
+    },
+    "cash_flow": {
+        "operating_cash_flow": ("NetCashProvidedByUsedInOperatingActivities",),
+        "capital_expenditure": ("PaymentsToAcquirePropertyPlantAndEquipment",),
+        "investing_cash_flow": ("NetCashProvidedByUsedInInvestingActivities",),
+        "financing_cash_flow": ("NetCashProvidedByUsedInFinancingActivities",),
+        "dividends_paid": ("PaymentsOfDividends",),
+    },
+}
+
+OUTPUT_COLUMNS = [
+    "ticker",
+    "cik",
+    "statement",
+    "canonical_metric",
+    "source_taxonomy",
+    "source_tag",
+    "value",
+    "unit",
+    "start_date",
+    "end_date",
+    "form",
+    "fiscal_year",
+    "fiscal_period",
+    "filed_date",
+    "frame",
+    "accession_number",
+    "period_type",
+    "derived",
+    "superseded_accessions",
+]
+
+_SUPPORTED_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A"}
+_DISCRETE_QUARTER_FRAME = re.compile(r"^CY\d{4}Q[1-4]$")
+_INSTANT_QUARTER_PERIODS = {"Q1", "Q2", "Q3"}
+
+
+def _financial_error(message: str) -> FinancialDataError:
+    return FinancialDataError(message)
+
+
+def _validate_inputs(
+    ticker: str, cik: str, payload: dict, years: int | None
+) -> tuple[str, str, dict]:
+    if not isinstance(ticker, str) or not ticker.strip():
+        raise _financial_error("ticker must be a nonblank string")
+    try:
+        normalized_cik = normalize_cik(cik)
+    except (TypeError, ValueError):
+        raise _financial_error("CIK is invalid") from None
+    if years is not None and (isinstance(years, bool) or not isinstance(years, int) or years <= 0):
+        raise ValueError("years must be a positive integer or None")
+    if not isinstance(payload, dict):
+        raise _financial_error("Company Facts payload must be an object")
+    facts = payload.get("facts")
+    if not isinstance(facts, dict):
+        raise _financial_error("Company Facts payload is missing a facts object")
+    us_gaap = facts.get("us-gaap")
+    if not isinstance(us_gaap, dict):
+        raise _financial_error("Company Facts payload is missing a us-gaap object")
+    _validate_us_gaap(us_gaap)
+    return ticker.strip().upper(), normalized_cik, us_gaap
+
+
+def _validate_us_gaap(us_gaap: dict) -> None:
+    for tag, fact in us_gaap.items():
+        if not isinstance(tag, str) or not isinstance(fact, dict):
+            raise _financial_error("Company Facts contains a malformed tag")
+        units = fact.get("units")
+        if not isinstance(units, dict):
+            raise _financial_error("Company Facts contains malformed units")
+        for unit, observations in units.items():
+            if not isinstance(unit, str) or not unit or not isinstance(observations, list):
+                raise _financial_error("Company Facts contains a malformed unit")
+            for item in observations:
+                if not isinstance(item, dict):
+                    raise _financial_error("Company Facts contains a malformed observation")
+                value = item.get("val")
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or (isinstance(value, float) and not math.isfinite(value))
+                ):
+                    raise _financial_error("Company Facts observation value must be numeric")
+
+
+def _period_type(statement: str, observation: dict) -> str:
+    fiscal_period = observation.get("fp")
+    frame = observation.get("frame")
+    if fiscal_period == "FY":
+        return "annual"
+    if (
+        statement == "balance_sheet"
+        and fiscal_period in _INSTANT_QUARTER_PERIODS
+        and isinstance(frame, str)
+        and frame.endswith("I")
+    ):
+        return "quarterly"
+    if isinstance(frame, str) and _DISCRETE_QUARTER_FRAME.fullmatch(frame):
+        return "quarterly"
+    return "ytd"
+
+
+def _candidate_rows(ticker: str, cik: str, us_gaap: dict) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for statement, metrics in CANONICAL_TAGS.items():
+        for canonical_metric, tags in metrics.items():
+            for tag_priority, tag in enumerate(tags):
+                fact = us_gaap.get(tag)
+                if fact is None:
+                    continue
+                for unit, observations in fact["units"].items():
+                    for observation in observations:
+                        if observation.get("form") not in _SUPPORTED_FORMS:
+                            continue
+                        rows.append(
+                            {
+                                "ticker": ticker,
+                                "cik": cik,
+                                "statement": statement,
+                                "canonical_metric": canonical_metric,
+                                "source_taxonomy": "us-gaap",
+                                "source_tag": tag,
+                                "value": observation["val"],
+                                "unit": unit,
+                                "start_date": observation.get("start"),
+                                "end_date": observation.get("end"),
+                                "form": observation.get("form"),
+                                "fiscal_year": observation.get("fy"),
+                                "fiscal_period": observation.get("fp"),
+                                "filed_date": observation.get("filed"),
+                                "frame": observation.get("frame"),
+                                "accession_number": observation.get("accn"),
+                                "period_type": _period_type(statement, observation),
+                                "derived": False,
+                                "superseded_accessions": "[]",
+                                "tag_priority": tag_priority,
+                            }
+                        )
+    return rows
+
+
+def _selection_key(row: dict[str, Any]) -> tuple[str, int]:
+    filed_date = row["filed_date"] if isinstance(row["filed_date"], str) else ""
+    return filed_date, -row["tag_priority"]
+
+
+def _select_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        key = (
+            row["statement"],
+            row["canonical_metric"],
+            row["start_date"],
+            row["end_date"],
+            row["period_type"],
+            row["unit"],
+            row["fiscal_year"],
+            row["fiscal_period"],
+        )
+        groups.setdefault(key, []).append(row)
+
+    selected: list[dict[str, Any]] = []
+    for candidates in groups.values():
+        selected_candidate = max(candidates, key=_selection_key)
+        winner = selected_candidate.copy()
+        displaced = sorted(
+            {
+                candidate["accession_number"]
+                for candidate in candidates
+                if candidate is not selected_candidate
+                and isinstance(candidate["accession_number"], str)
+                and candidate["accession_number"] != winner["accession_number"]
+            }
+        )
+        winner["superseded_accessions"] = json.dumps(displaced)
+        winner.pop("tag_priority")
+        selected.append(winner)
+    return selected
+
+
+def _sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    fiscal_year = row["fiscal_year"]
+    sortable_year = (
+        fiscal_year
+        if isinstance(fiscal_year, Real) and not isinstance(fiscal_year, bool)
+        else -1
+    )
+    return (
+        list(CANONICAL_TAGS).index(row["statement"]),
+        sortable_year,
+        row["end_date"] or "",
+        list(CANONICAL_TAGS[row["statement"]]).index(row["canonical_metric"]),
+        row["unit"],
+    )
+
+
+def _filter_years(rows: list[dict[str, Any]], years: int | None) -> list[dict[str, Any]]:
+    if years is None:
+        return rows
+    fiscal_years = [
+        row["fiscal_year"]
+        for row in rows
+        if isinstance(row["fiscal_year"], Real)
+        and not isinstance(row["fiscal_year"], bool)
+        and math.isfinite(row["fiscal_year"])
+    ]
+    if not fiscal_years:
+        return rows
+    threshold = max(fiscal_years) - years
+    return [
+        row
+        for row in rows
+        if isinstance(row["fiscal_year"], Real)
+        and not isinstance(row["fiscal_year"], bool)
+        and row["fiscal_year"] > threshold
+    ]
+
+
+def build_financial_statements(
+    ticker: str,
+    cik: str,
+    payload: dict,
+    years: int | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Normalize SEC Company Facts into three schema-stable financial statements."""
+    normalized_ticker, normalized_cik, us_gaap = _validate_inputs(ticker, cik, payload, years)
+    rows = _filter_years(
+        _select_rows(_candidate_rows(normalized_ticker, normalized_cik, us_gaap)), years
+    )
+    rows.sort(key=_sort_key)
+    statements: dict[str, pd.DataFrame] = {}
+    for statement in CANONICAL_TAGS:
+        statement_rows = [row for row in rows if row["statement"] == statement]
+        if not statement_rows:
+            statements[statement] = pd.DataFrame(columns=OUTPUT_COLUMNS)
+            continue
+        statements[statement] = pd.DataFrame(
+            {
+                column: pd.Series(
+                    [row[column] for row in statement_rows],
+                    dtype="object",
+                )
+                for column in OUTPUT_COLUMNS
+            }
+        )
+    return statements
+
+
+def _numeric(value: Any) -> bool:
+    return (
+        isinstance(value, Real)
+        and not isinstance(value, bool)
+        and (isinstance(value, int) or math.isfinite(value))
+    )
+
+
+def _provenance_accessions(row: pd.Series) -> list[str]:
+    accessions: list[str] = []
+    accession = row.get("accession_number")
+    if isinstance(accession, str):
+        accessions.append(accession)
+    serialized = row.get("superseded_accessions", "[]")
+    try:
+        prior_accessions = json.loads(serialized)
+    except (TypeError, ValueError):
+        raise ValueError("superseded_accessions must be a JSON list") from None
+    if not isinstance(prior_accessions, list) or any(
+        not isinstance(item, str) for item in prior_accessions
+    ):
+        raise ValueError("superseded_accessions must be a JSON list of strings")
+    return accessions + prior_accessions
+
+
+def derive_discrete_quarter(current_ytd: pd.Series, prior_ytd: pd.Series) -> pd.Series:
+    """Derive one discrete quarter by subtracting compatible cumulative observations."""
+    if not isinstance(current_ytd, pd.Series) or not isinstance(prior_ytd, pd.Series):
+        raise ValueError("current_ytd and prior_ytd must be pandas Series")
+    for field in ("unit", "canonical_metric", "fiscal_year", "start_date"):
+        if current_ytd.get(field) != prior_ytd.get(field):
+            raise ValueError(f"financial rows have incompatible {field}")
+    for field in ("unit", "canonical_metric"):
+        if not isinstance(current_ytd.get(field), str) or not current_ytd.get(field):
+            raise ValueError(f"financial rows require {field}")
+    fiscal_year = current_ytd.get("fiscal_year")
+    if (
+        not isinstance(fiscal_year, Real)
+        or isinstance(fiscal_year, bool)
+        or (not isinstance(fiscal_year, int) and not math.isfinite(fiscal_year))
+    ):
+        raise ValueError("financial rows require fiscal_year")
+    current_value = current_ytd.get("value")
+    prior_value = prior_ytd.get("value")
+    if not _numeric(current_value) or not _numeric(prior_value):
+        raise ValueError("financial row values must be numeric")
+    try:
+        fiscal_year_start = pd.Timestamp(current_ytd.get("start_date"))
+        current_end = pd.Timestamp(current_ytd.get("end_date"))
+        prior_end = pd.Timestamp(prior_ytd.get("end_date"))
+    except (TypeError, ValueError):
+        raise ValueError("financial row dates must be valid") from None
+    if (
+        pd.isna(fiscal_year_start)
+        or pd.isna(current_end)
+        or pd.isna(prior_end)
+        or fiscal_year_start >= prior_end
+        or prior_end >= current_end
+    ):
+        raise ValueError("prior end date must precede current end date")
+
+    result = current_ytd.copy(deep=True)
+    result["value"] = current_value - prior_value
+    result["start_date"] = prior_ytd.get("end_date")
+    result["period_type"] = "quarterly"
+    result["derived"] = True
+    provenance = sorted(
+        set(_provenance_accessions(current_ytd) + _provenance_accessions(prior_ytd))
+    )
+    result["superseded_accessions"] = json.dumps(provenance)
+    return result

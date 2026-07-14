@@ -1,0 +1,111 @@
+{
+  "cik": 320193,
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        "label": "Revenue",
+        "description": "Revenue from contracts with customers.",
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 1000,
+              "accn": "0000320193-24-000001",
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-11-01",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 1010,
+              "accn": "0000320193-24-000002",
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K/A",
+              "filed": "2024-11-15",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2024-12-28",
+              "val": 300,
+              "accn": "0000320193-25-000001",
+              "fy": 2025,
+              "fp": "Q1",
+              "form": "10-Q",
+              "filed": "2025-02-01",
+              "frame": "CY2024Q4"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-03-29",
+              "val": 650,
+              "accn": "0000320193-25-000002",
+              "fy": 2025,
+              "fp": "Q2",
+              "form": "10-Q",
+              "filed": "2025-05-01"
+            }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        "label": "Net income",
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 100,
+              "accn": "0000320193-24-000001",
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-11-01",
+              "frame": "CY2024"
+            }
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "end": "2024-09-28",
+              "val": 5000,
+              "accn": "0000320193-24-000001",
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-11-01",
+              "frame": "CY2024Q3I"
+            }
+          ]
+        }
+      },
+      "StockholdersEquity": {
+        "label": "Stockholders' equity",
+        "units": {
+          "USD": [
+            {
+              "end": "2024-09-28",
+              "val": 2000,
+              "accn": "0000320193-24-000001",
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-11-01",
+              "frame": "CY2024Q3I"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
