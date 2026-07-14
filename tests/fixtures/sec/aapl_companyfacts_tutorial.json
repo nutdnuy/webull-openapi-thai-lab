@@ -1,0 +1,98 @@
+{
+  "cik": 320193,
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        "label": "Revenue from Contract with Customer, Excluding Assessed Tax",
+        "description": "Amount of revenue from contracts with customers.",
+        "units": {
+          "USD": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 383285000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 391035000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      },
+      "GrossProfit": {
+        "label": "Gross Profit",
+        "description": "Revenue less cost of goods and services sold.",
+        "units": {
+          "USD": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 169148000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 180683000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      },
+      "OperatingIncomeLoss": {
+        "label": "Operating Income (Loss)",
+        "description": "Income from normal operations before nonoperating items.",
+        "units": {
+          "USD": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 114301000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 123216000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        "label": "Net Income (Loss)",
+        "description": "Consolidated profit or loss for the period.",
+        "units": {
+          "USD": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 96995000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 93736000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      },
+      "EarningsPerShareDiluted": {
+        "label": "Earnings Per Share, Diluted",
+        "description": "Diluted earnings per share.",
+        "units": {
+          "USD/shares": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 6.13, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 6.08, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      },
+      "StockholdersEquity": {
+        "label": "Stockholders' Equity",
+        "description": "Total stockholders' equity.",
+        "units": {
+          "USD": [
+            {"end": "2023-09-30", "val": 62146000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023Q3I"},
+            {"end": "2024-09-28", "val": 56950000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024Q3I"}
+          ]
+        }
+      },
+      "LongTermDebtNoncurrent": {
+        "label": "Long-term Debt, Noncurrent",
+        "description": "Long-term debt classified as noncurrent.",
+        "units": {
+          "USD": [
+            {"end": "2023-09-30", "val": 95281000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023Q3I"},
+            {"end": "2024-09-28", "val": 85750000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024Q3I"}
+          ]
+        }
+      },
+      "NetCashProvidedByUsedInOperatingActivities": {
+        "label": "Net Cash Provided by Operating Activities",
+        "description": "Cash provided by operating activities.",
+        "units": {
+          "USD": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 110543000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 118254000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      },
+      "PaymentsToAcquirePropertyPlantAndEquipment": {
+        "label": "Payments to Acquire Property, Plant and Equipment",
+        "description": "Cash outflow to acquire property, plant and equipment.",
+        "units": {
+          "USD": [
+            {"start": "2022-09-25", "end": "2023-09-30", "val": 10959000000, "accn": "0000320193-23-000106", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2023-11-03", "frame": "CY2023"},
+            {"start": "2023-10-01", "end": "2024-09-28", "val": 9447000000, "accn": "0000320193-24-000123", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-11-01", "frame": "CY2024"}
+          ]
+        }
+      }
+    }
+  }
+}

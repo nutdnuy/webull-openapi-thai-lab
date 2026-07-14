@@ -112,6 +112,7 @@ def build_notebook() -> dict:
         ),
         code(
             """
+            import json
             import os
             from pathlib import Path
 
@@ -169,8 +170,8 @@ def build_notebook() -> dict:
             """
         ),
         explanation(
-            "resolve AAPL เป็น CIK ผ่าน interface เดียวกันทั้ง offline และ live",
-            "ได้ `0000320193`",
+            "resolve ticker เป็น CIK ผ่าน interface เดียวกันทั้ง offline และ live",
+            "ได้ CIK 10 หลักที่ตรงกับ ticker (`0000320193` สำหรับ AAPL offline)",
             "อย่าแปลง CIK เป็น integer เพราะเลขศูนย์ด้านหน้าจะหาย",
         ),
         code(
@@ -221,6 +222,9 @@ def build_notebook() -> dict:
 
             Webull daily OHLCV เป็นข้อมูลเสริม. Offline fixture มีแถวขนาดเล็กเพื่อทดสอบ schema;
             live mode อาจไม่มีราคาเมื่อ permission ไม่พร้อม แต่ขั้น SEC ยังไปต่อได้.
+            ตามเอกสาร Webull, bars ระดับ daily ขึ้นไปเป็น forward-adjusted: ประวัติราคา
+            ถูกปรับย้อนหลังเมื่อมี corporate actions. จึงต้องระวังเมื่อเทียบราคาเก่ากับ
+            per-share facts ที่รายงาน ณ เวลานั้น.
             """
         ),
         explanation(
@@ -277,7 +281,8 @@ def build_notebook() -> dict:
             ## Step 6 - Charts
 
             แยกหน่วยเงินของงบกับราคาหุ้นเป็นคนละ panel. กราฟนี้ใช้เพื่อสำรวจข้อมูล
-            ไม่ใช่หลักฐานเชิงเหตุและผลหรือการพยากรณ์ผลตอบแทน.
+            ไม่ใช่หลักฐานเชิงเหตุและผลหรือการพยากรณ์ผลตอบแทน. เส้นราคาคือ
+            `forward-adjusted close`; corporate actions ในอนาคตอาจทำให้ประวัติถูกปรับย้อนหลัง.
             """
         ),
         explanation(
@@ -291,7 +296,10 @@ def build_notebook() -> dict:
             figure = make_subplots(
                 rows=2,
                 cols=1,
-                subplot_titles=("Annual financial facts (USD)", "Daily close (USD)"),
+                subplot_titles=(
+                    "Annual financial facts (USD)",
+                    "Forward-adjusted daily close (USD)",
+                ),
                 vertical_spacing=0.14,
             )
             for metric_name in ("revenue", "net_income"):
@@ -310,14 +318,14 @@ def build_notebook() -> dict:
                     go.Scatter(
                         x=prices["date"],
                         y=prices["close"].map(float),
-                        name="close",
+                        name="forward-adjusted close",
                     ),
                     row=2,
                     col=1,
                 )
             figure.update_layout(
                 template="plotly_dark",
-                title="AAPL: SEC financial facts and Webull prices",
+                title=f"{TICKER}: SEC financial facts and Webull prices",
                 height=760,
             )
             chart_path = OUTPUT_DIR / "sec-webull-financials-chart.html"
@@ -335,17 +343,25 @@ def build_notebook() -> dict:
 
             เรียก public pipeline เดียวกับคำสั่ง `company-data` เพื่อเขียน canonical CSV,
             Parquet, JSON, raw SEC payloads และ manifest. Pipeline จะ normalize และคำนวณใหม่
-            จาก inputs จึงไม่พึ่ง hidden notebook state.
+            จาก inputs จึงไม่พึ่ง hidden notebook state. Public pipeline เป็นเจ้าของ data
+            artifacts ส่วนกราฟเป็น notebook-created artifact จึงลงทะเบียนเพิ่มหลัง pipeline สำเร็จ.
             """
         ),
         explanation(
-            "รัน pipeline แบบ end-to-end และสรุป source status กับรายชื่อไฟล์",
-            "manifest ระบุ `sec_status`, `webull_status`, warnings และ files",
+            "รัน pipeline, ลงทะเบียนกราฟใน audit metadata และเขียน manifest แบบ deterministic JSON",
+            "manifest ระบุ source status, files และ `notebook_artifacts` ตรงกับไฟล์บน disk",
             "อย่า commit `outputs/`, raw payload ส่วนตัว, `.env` หรือ token",
         ),
         code(
             """
             manifest = run_company_pipeline(TICKER, 5, OUTPUT_DIR, sec_client, data_client)
+            manifest["notebook_artifacts"] = [chart_path.name]
+            manifest["files"] = sorted({*manifest["files"], chart_path.name})
+            manifest_path = OUTPUT_DIR / "run_manifest.json"
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\\n",
+                encoding="utf-8",
+            )
             export_summary = {
                 "ticker": manifest["ticker"],
                 "sec_status": manifest["sec_status"],
@@ -368,6 +384,7 @@ def build_notebook() -> dict:
             - ใช้ `period end` แทน `filed date` จนเกิด look-ahead bias
             - เติม missing XBRL fact เป็นศูนย์ หรือใช้ metric โดยไม่ตรวจ status
             - สรุปจากกราฟว่าปัจจัยหนึ่งทำให้อีกปัจจัยเปลี่ยนโดยไม่มีการทดสอบ
+            - เทียบ forward-adjusted price กับ historical per-share facts โดยไม่ตรวจ corporate actions
             - เปิด live mode โดยไม่ตั้ง SEC contact ที่เหมาะสม หรือเผย secret ใน output
 
             ## Exercise

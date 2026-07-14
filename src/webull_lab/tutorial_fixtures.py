@@ -61,7 +61,7 @@ class FixtureSecClient:
         directory = Path(fixture_dir)
         if not directory.is_dir():
             raise ValueError("Offline SEC fixture directory must exist")
-        for filename in ("aapl_submissions_sample.json", "aapl_companyfacts_sample.json"):
+        for filename in ("aapl_submissions_sample.json", "aapl_companyfacts_tutorial.json"):
             if not (directory / filename).is_file():
                 raise ValueError("Offline SEC fixture directory is incomplete")
         self.fixture_dir = directory
@@ -97,7 +97,7 @@ class FixtureSecClient:
     def get_companyfacts(self, cik: int | str) -> dict[str, Any]:
         normalized = self._validate_cik(cik)
         payload = _load_json_object(
-            self.fixture_dir / "aapl_companyfacts_sample.json", "SEC company facts"
+            self.fixture_dir / "aapl_companyfacts_tutorial.json", "SEC company facts"
         )
         try:
             payload_cik = normalize_cik(payload.get("cik", ""))

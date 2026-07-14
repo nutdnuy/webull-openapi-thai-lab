@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from webull_lab.tutorial_fixtures import FixtureDataClient, FixtureSecClient
+from webull_lab.tutorial_fixtures import FixtureDataClient, FixtureResponse, FixtureSecClient
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "scripts" / "build_sec_webull_financials_notebook.py"
@@ -140,6 +140,9 @@ def test_fixture_clients_validate_inputs_and_do_not_mutate_payloads(tmp_path):
     assert sec_client.get_submissions("0000320193") == originals[0]
     assert sec_client.get_companyfacts("0000320193") == originals[1]
     assert data_client.market_data.get_history_bar("AAPL", "US_STOCK", "D").json() == originals[2]
+    assert originals[1] == json.loads(
+        (sec_dir / "aapl_companyfacts_tutorial.json").read_text(encoding="utf-8")
+    )
 
     with pytest.raises(ValueError, match="AAPL only"):
         sec_client.resolve_cik("MSFT")
@@ -193,6 +196,74 @@ def test_notebook_executes_offline_top_to_bottom_without_network_or_credentials(
     assert actual == EXPECTED_ARTIFACTS
     assert namespace["CIK"] == "0000320193"
     assert namespace["manifest"]["webull_status"] == "available"
+    annual_income = namespace["statements"]["income_statement"].query(
+        "period_type == 'annual'"
+    )
+    assert set(annual_income["fiscal_year"]) == {2023, 2024}
+    assert {
+        "revenue",
+        "gross_profit",
+        "operating_income",
+        "net_income",
+        "diluted_eps",
+    }.issubset(set(annual_income["canonical_metric"]))
+    assert set(annual_income.loc[annual_income["canonical_metric"] == "diluted_eps", "unit"]) == {
+        "USD/shares"
+    }
+    assert set(annual_income["source_taxonomy"]) == {"us-gaap"}
+    assert set(annual_income["accession_number"]) == {
+        "0000320193-23-000106",
+        "0000320193-24-000123",
+    }
+    annual_balance = namespace["statements"]["balance_sheet"].query(
+        "period_type == 'annual'"
+    )
+    assert {"stockholders_equity", "debt"}.issubset(
+        set(annual_balance["canonical_metric"])
+    )
+    annual_cash_flow = namespace["statements"]["cash_flow"].query(
+        "period_type == 'annual'"
+    )
+    assert {"operating_cash_flow", "capital_expenditure"}.issubset(
+        set(annual_cash_flow["canonical_metric"])
+    )
+    assert set(namespace["exercise_answer"]["fiscal_year"]) == {2023, 2024}
+    assert set(namespace["exercise_answer"]["canonical_metric"]) == {
+        "revenue",
+        "net_income",
+    }
+    assert set(
+        namespace["exercise_answer"][["fiscal_year", "canonical_metric"]].itertuples(
+            index=False, name=None
+        )
+    ) == {
+        (2023, "revenue"),
+        (2023, "net_income"),
+        (2024, "revenue"),
+        (2024, "net_income"),
+    }
+    available = set(
+        namespace["metrics"].loc[
+            namespace["metrics"]["status"] == "available", "metric"
+        ]
+    )
+    assert {
+        "revenue_growth",
+        "gross_margin",
+        "operating_margin",
+        "roe",
+        "free_cash_flow",
+        "pe",
+    }.issubset(available)
+    persisted_manifest = json.loads(
+        (output / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    assert persisted_manifest == namespace["manifest"]
+    assert persisted_manifest["notebook_artifacts"] == [
+        "sec-webull-financials-chart.html"
+    ]
+    assert "sec-webull-financials-chart.html" in persisted_manifest["files"]
+    assert all((output / relative).is_file() for relative in persisted_manifest["files"])
     chart = (output / "sec-webull-financials-chart.html").read_text(encoding="utf-8")
     assert "plotly.js" in chart.lower()
     assert '<script src="https://cdn.plot.ly' not in chart
@@ -227,6 +298,78 @@ def test_live_mode_continues_sec_only_when_optional_webull_initialization_fails(
         for path in output.rglob("*")
         if path.is_file()
     )
+
+
+def test_live_mode_supports_non_aapl_ticker_consistently(tmp_path, monkeypatch):
+    output = tmp_path / "output"
+    companyfacts = json.loads(
+        (FIXTURE_ROOT / "sec" / "aapl_companyfacts_tutorial.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    companyfacts["cik"] = 789019
+    companyfacts["entityName"] = "Microsoft Corporation"
+    submissions = json.loads(
+        (FIXTURE_ROOT / "sec" / "aapl_submissions_sample.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    submissions["cik"] = "0000789019"
+    submissions["name"] = "Microsoft Corporation"
+    submissions["tickers"] = ["MSFT"]
+    bars = json.loads(
+        (FIXTURE_ROOT / "webull" / "aapl_daily_bars_sample.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for bar in bars:
+        bar["symbol"] = "MSFT"
+
+    class StubSecClient:
+        def resolve_cik(self, ticker):
+            assert ticker == "MSFT"
+            return "0000789019"
+
+        def get_submissions(self, cik):
+            assert cik == "0000789019"
+            return copy.deepcopy(submissions)
+
+        def get_companyfacts(self, cik):
+            assert cik == "0000789019"
+            return copy.deepcopy(companyfacts)
+
+    class StubMarketData:
+        def get_history_bar(self, symbol, category, timespan):
+            assert (symbol, category, timespan) == ("MSFT", "US_STOCK", "D")
+            return FixtureResponse(bars)
+
+    class StubDataClient:
+        market_data = StubMarketData()
+
+    stub_sec_client = StubSecClient()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SEC_WEBULL_TUTORIAL_LIVE", "1")
+    monkeypatch.setenv("SEC_WEBULL_TUTORIAL_TICKER", "MSFT")
+    monkeypatch.setenv("SEC_WEBULL_TUTORIAL_OUTPUT_DIR", str(output))
+    monkeypatch.setattr("webull_lab.sec_config.load_sec_settings", lambda: object())
+    monkeypatch.setattr("webull_lab.sec_client.SecClient", lambda settings: stub_sec_client)
+    monkeypatch.setattr("webull_lab.cli.build_optional_data_client", StubDataClient)
+
+    namespace = execute_notebook(load())
+
+    assert namespace["TICKER"] == "MSFT"
+    assert namespace["CIK"] == "0000789019"
+    assert namespace["manifest"]["ticker"] == "MSFT"
+    assert set(namespace["prices"]["symbol"]) == {"MSFT"}
+    chart = (output / "sec-webull-financials-chart.html").read_text(encoding="utf-8")
+    assert "MSFT: SEC financial facts and Webull prices" in chart
+
+
+def test_notebook_documents_forward_adjusted_webull_prices():
+    text = "\n".join(source(cell) for cell in load()["cells"])
+
+    assert "forward-adjusted close" in text
+    assert "ปรับย้อนหลัง" in text
 
 
 def test_builder_source_and_notebook_do_not_contain_embedded_secrets():
