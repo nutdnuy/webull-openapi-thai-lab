@@ -139,6 +139,28 @@ def test_duration_period_classification_from_fixture(companyfacts):
     assert by_period == {"FY": "annual", "Q1": "quarterly", "Q2": "ytd"}
 
 
+def test_duration_discrete_quarter_frame_takes_precedence_over_fy():
+    payload = payload_for(
+        "Revenues",
+        [
+            observation(
+                90,
+                start="2008-09-28",
+                end="2008-12-27",
+                fiscal_year=2009,
+                fiscal_period="FY",
+                form="10-K",
+                filed="2009-10-27",
+                frame="CY2008Q4",
+            )
+        ],
+    )
+
+    row = build_financial_statements("AAPL", "320193", payload)["income_statement"].iloc[0]
+
+    assert row["period_type"] == "quarterly"
+
+
 def test_quarterly_instant_balance_fact_is_not_ytd():
     payload = payload_for(
         "Assets",
@@ -179,6 +201,25 @@ def test_q4_instant_balance_fact_is_quarterly():
     assert row["period_type"] == "quarterly"
 
 
+def test_quarterly_instant_balance_without_frame_is_quarterly():
+    payload = payload_for(
+        "Assets",
+        [
+            observation(
+                5700,
+                start=None,
+                fiscal_period="Q2",
+                form="10-Q",
+                frame=None,
+            )
+        ],
+    )
+
+    row = build_financial_statements("AAPL", "320193", payload)["balance_sheet"].iloc[0]
+
+    assert row["period_type"] == "quarterly"
+
+
 def test_candidate_tags_cover_different_periods_and_priority_breaks_filed_date_tie():
     first = observation(100, end="2023-12-31", fiscal_year=2023, accession="first-2023")
     first_tie = observation(110, fiscal_year=2024, accession="first-2024")
@@ -204,6 +245,34 @@ def test_candidate_tags_cover_different_periods_and_priority_breaks_filed_date_t
     assert tie["source_tag"] == "RevenueFromContractWithCustomerExcludingAssessedTax"
     assert tie["value"] == 110
     assert tie["superseded_accessions"] == '["fallback-2024"]'
+
+
+def test_same_economic_period_deduplicates_across_changed_filing_metadata():
+    original = observation(
+        100,
+        accession="original",
+        fiscal_year=2024,
+        fiscal_period="Q2",
+        filed="2024-08-01",
+        frame=None,
+    )
+    later = observation(
+        101,
+        accession="later",
+        fiscal_year=2025,
+        fiscal_period="Q3",
+        filed="2025-08-01",
+        frame=None,
+    )
+    payload = payload_for("NetIncomeLoss", [original, later])
+
+    rows = build_financial_statements("AAPL", "320193", payload)["income_statement"]
+
+    assert len(rows) == 1
+    assert rows.iloc[0]["accession_number"] == "later"
+    assert rows.iloc[0]["fiscal_year"] == 2025
+    assert rows.iloc[0]["fiscal_period"] == "Q3"
+    assert rows.iloc[0]["superseded_accessions"] == '["original"]'
 
 
 def test_units_are_separate_and_unsupported_forms_are_excluded():
@@ -296,6 +365,36 @@ def test_years_filter_uses_latest_distinct_values_for_sparse_years():
     assert latest_one["fiscal_year"].tolist() == [2024]
 
 
+def test_years_filter_uses_economic_end_year_not_recent_filing_metadata():
+    payload = payload_for(
+        "NetIncomeLoss",
+        [
+            observation(
+                1,
+                start="2020-01-01",
+                end="2020-12-31",
+                fiscal_year=2025,
+                accession="old-repeated",
+                filed="2025-02-01",
+            ),
+            observation(
+                2,
+                start="2024-01-01",
+                end="2024-12-31",
+                fiscal_year=2024,
+                accession="latest-economic",
+                filed="2025-02-02",
+            ),
+        ],
+    )
+
+    rows = build_financial_statements("AAPL", "320193", payload, years=1)[
+        "income_statement"
+    ]
+
+    assert rows["accession_number"].tolist() == ["latest-economic"]
+
+
 @pytest.mark.parametrize("years", [0, -1, 1.5, "1", True])
 def test_years_rejects_non_positive_non_integer_and_bool(years):
     with pytest.raises(ValueError, match="years"):
@@ -382,6 +481,48 @@ def test_supported_observation_rejects_malformed_metadata_safely(field, value):
     assert repr(value) not in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("end", None),
+        ("end", ""),
+        ("filed", None),
+        ("filed", ""),
+        ("accn", None),
+        ("accn", ""),
+    ],
+)
+def test_supported_observation_requires_auditable_fields(field, value):
+    item = observation(100)
+    item[field] = value
+
+    with pytest.raises(FinancialDataError):
+        build_financial_statements(
+            "AAPL", "320193", payload_for("NetIncomeLoss", [item])
+        )
+
+
+def test_duration_observation_requires_start_date():
+    item = observation(100)
+    item.pop("start")
+
+    with pytest.raises(FinancialDataError):
+        build_financial_statements(
+            "AAPL", "320193", payload_for("NetIncomeLoss", [item])
+        )
+
+
+@pytest.mark.parametrize("payload_cik", [789019, [], "secret-cik"])
+def test_payload_cik_must_be_valid_and_match_supplied_cik(payload_cik):
+    payload = payload_for("NetIncomeLoss", [observation(100)])
+    payload["cik"] = payload_cik
+
+    with pytest.raises(FinancialDataError) as exc_info:
+        build_financial_statements("AAPL", "320193", payload)
+
+    assert "secret-cik" not in str(exc_info.value)
+
+
 def test_build_does_not_mutate_caller_payload(companyfacts):
     original = copy.deepcopy(companyfacts)
 
@@ -431,7 +572,7 @@ def test_derive_discrete_quarter_subtracts_ytd_and_preserves_inputs():
     result = derive_discrete_quarter(current, prior)
 
     assert result["value"] == 350
-    assert result["start_date"] == "2024-12-28"
+    assert result["start_date"] == "2024-12-29"
     assert result["period_type"] == "quarterly"
     assert result["derived"] is True
     assert result["accession_number"] == "current"
@@ -465,6 +606,42 @@ def test_derive_discrete_quarter_rejects_incompatible_rows(current_change, prior
         "end_date": "2024-12-28",
         "fiscal_period": "Q1",
         "accession_number": "prior",
+        **prior_change,
+    }
+    prior = series_for_derivation(**prior_values)
+
+    with pytest.raises(ValueError):
+        derive_discrete_quarter(current, prior)
+
+
+@pytest.mark.parametrize(
+    "current_change,prior_change",
+    [
+        ({"ticker": "MSFT"}, {}),
+        ({"ticker": ""}, {"ticker": ""}),
+        ({"cik": "0000789019"}, {}),
+        ({"cik": "320193"}, {"cik": "320193"}),
+        ({"statement": "cash_flow"}, {}),
+        ({"statement": "balance_sheet"}, {"statement": "balance_sheet"}),
+        ({"source_taxonomy": "ifrs-full"}, {}),
+        ({"source_taxonomy": ""}, {"source_taxonomy": ""}),
+        ({"fiscal_period": "Q3"}, {}),
+        ({"period_type": "quarterly"}, {}),
+        ({}, {"period_type": "ytd"}),
+        ({"derived": True}, {}),
+        ({}, {"derived": True}),
+    ],
+)
+def test_derive_discrete_quarter_rejects_identity_progression_and_state_errors(
+    current_change, prior_change
+):
+    current = series_for_derivation(**current_change)
+    prior_values = {
+        "value": 300,
+        "end_date": "2024-12-28",
+        "fiscal_period": "Q1",
+        "accession_number": "prior",
+        "period_type": "quarterly",
         **prior_change,
     }
     prior = series_for_derivation(**prior_values)

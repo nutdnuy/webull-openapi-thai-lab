@@ -78,7 +78,6 @@ OUTPUT_COLUMNS = [
 _SUPPORTED_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A"}
 _DISCRETE_QUARTER_FRAME = re.compile(r"^CY\d{4}Q[1-4]$")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_INSTANT_QUARTER_PERIODS = {"Q1", "Q2", "Q3", "Q4"}
 
 
 def _financial_error(message: str) -> FinancialDataError:
@@ -98,6 +97,13 @@ def _validate_inputs(
         raise ValueError("years must be a positive integer or None")
     if not isinstance(payload, dict):
         raise _financial_error("Company Facts payload must be an object")
+    if "cik" in payload:
+        try:
+            payload_cik = normalize_cik(payload["cik"])
+        except (TypeError, ValueError):
+            raise _financial_error("Company Facts payload CIK is invalid") from None
+        if payload_cik != normalized_cik:
+            raise _financial_error("Company Facts payload CIK does not match supplied CIK")
     facts = payload.get("facts")
     if not isinstance(facts, dict):
         raise _financial_error("Company Facts payload is missing a facts object")
@@ -135,8 +141,10 @@ def _validate_us_gaap(us_gaap: dict) -> None:
                     _validate_supported_metadata(item)
 
 
-def _validate_iso_date(value: Any, field: str) -> None:
+def _validate_iso_date(value: Any, field: str, *, required: bool = False) -> None:
     if value is None:
+        if required:
+            raise _financial_error(f"Company Facts observation {field} is required")
         return
     if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
         raise _financial_error(f"Company Facts observation {field} must be an ISO date")
@@ -147,12 +155,15 @@ def _validate_iso_date(value: Any, field: str) -> None:
 
 
 def _validate_supported_metadata(item: dict) -> None:
-    for field in ("start", "end", "filed"):
-        _validate_iso_date(item.get(field), field)
-    for field in ("frame", "accn"):
-        value = item.get(field)
-        if value is not None and not isinstance(value, str):
-            raise _financial_error(f"Company Facts observation {field} must be a string")
+    _validate_iso_date(item.get("start"), "start")
+    for field in ("end", "filed"):
+        _validate_iso_date(item.get(field), field, required=True)
+    frame = item.get("frame")
+    if frame is not None and not isinstance(frame, str):
+        raise _financial_error("Company Facts observation frame must be a string")
+    accession = item.get("accn")
+    if not isinstance(accession, str) or not accession.strip():
+        raise _financial_error("Company Facts observation accession must be nonblank")
     fiscal_year = item.get("fy")
     if (
         fiscal_year is not None
@@ -171,17 +182,12 @@ def _validate_supported_metadata(item: dict) -> None:
 def _period_type(statement: str, observation: dict) -> str:
     fiscal_period = observation.get("fp")
     frame = observation.get("frame")
-    if fiscal_period == "FY":
-        return "annual"
-    if (
-        statement == "balance_sheet"
-        and fiscal_period in _INSTANT_QUARTER_PERIODS
-        and isinstance(frame, str)
-        and frame.endswith("I")
-    ):
-        return "quarterly"
+    if statement == "balance_sheet" and observation.get("start") is None:
+        return "annual" if fiscal_period == "FY" else "quarterly"
     if isinstance(frame, str) and _DISCRETE_QUARTER_FRAME.fullmatch(frame):
         return "quarterly"
+    if fiscal_period == "FY":
+        return "annual"
     return "ytd"
 
 
@@ -197,6 +203,10 @@ def _candidate_rows(ticker: str, cik: str, us_gaap: dict) -> list[dict[str, Any]
                     for observation in observations:
                         if observation.get("form") not in _SUPPORTED_FORMS:
                             continue
+                        if statement != "balance_sheet" and observation.get("start") is None:
+                            raise _financial_error(
+                                "Company Facts duration observation start is required"
+                            )
                         rows.append(
                             {
                                 "ticker": ticker,
@@ -239,8 +249,6 @@ def _select_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             row["end_date"],
             row["period_type"],
             row["unit"],
-            row["fiscal_year"],
-            row["fiscal_period"],
         )
         groups.setdefault(key, []).append(row)
 
@@ -282,23 +290,9 @@ def _sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
 def _filter_years(rows: list[dict[str, Any]], years: int | None) -> list[dict[str, Any]]:
     if years is None:
         return rows
-    fiscal_years = [
-        row["fiscal_year"]
-        for row in rows
-        if isinstance(row["fiscal_year"], Real)
-        and not isinstance(row["fiscal_year"], bool)
-        and math.isfinite(row["fiscal_year"])
-    ]
-    if not fiscal_years:
-        return rows
-    latest_years = set(sorted(set(fiscal_years), reverse=True)[:years])
-    return [
-        row
-        for row in rows
-        if isinstance(row["fiscal_year"], Real)
-        and not isinstance(row["fiscal_year"], bool)
-        and row["fiscal_year"] in latest_years
-    ]
+    economic_years = {int(row["end_date"][:4]) for row in rows}
+    latest_years = set(sorted(economic_years, reverse=True)[:years])
+    return [row for row in rows if int(row["end_date"][:4]) in latest_years]
 
 
 def build_financial_statements(
@@ -360,12 +354,56 @@ def derive_discrete_quarter(current_ytd: pd.Series, prior_ytd: pd.Series) -> pd.
     """Derive one discrete quarter by subtracting compatible cumulative observations."""
     if not isinstance(current_ytd, pd.Series) or not isinstance(prior_ytd, pd.Series):
         raise ValueError("current_ytd and prior_ytd must be pandas Series")
-    for field in ("unit", "canonical_metric", "fiscal_year", "start_date"):
+    for field in (
+        "ticker",
+        "statement",
+        "source_taxonomy",
+        "canonical_metric",
+        "unit",
+        "fiscal_year",
+        "start_date",
+    ):
         if current_ytd.get(field) != prior_ytd.get(field):
             raise ValueError(f"financial rows have incompatible {field}")
-    for field in ("unit", "canonical_metric"):
+    for field in (
+        "ticker",
+        "statement",
+        "source_taxonomy",
+        "canonical_metric",
+        "unit",
+        "start_date",
+    ):
         if not isinstance(current_ytd.get(field), str) or not current_ytd.get(field):
             raise ValueError(f"financial rows require {field}")
+    if current_ytd["statement"] not in {"income_statement", "cash_flow"}:
+        raise ValueError("financial rows must be duration statements")
+    current_cik = current_ytd.get("cik")
+    prior_cik = prior_ytd.get("cik")
+    try:
+        normalized_current_cik = normalize_cik(current_cik)
+        normalized_prior_cik = normalize_cik(prior_cik)
+    except (TypeError, ValueError):
+        raise ValueError("financial rows require normalized CIK values") from None
+    if (
+        not isinstance(current_cik, str)
+        or not isinstance(prior_cik, str)
+        or current_cik != normalized_current_cik
+        or prior_cik != normalized_prior_cik
+        or current_cik != prior_cik
+    ):
+        raise ValueError("financial rows require matching normalized CIK values")
+    if current_ytd.get("derived") is not False or prior_ytd.get("derived") is not False:
+        raise ValueError("financial rows must not already be derived")
+    current_period = current_ytd.get("fiscal_period")
+    prior_period = prior_ytd.get("fiscal_period")
+    expected_prior = {"Q2": "Q1", "Q3": "Q2", "Q4": "Q3"}.get(current_period)
+    if expected_prior is None or prior_period != expected_prior:
+        raise ValueError("financial rows have incompatible fiscal-period progression")
+    if current_ytd.get("period_type") != "ytd":
+        raise ValueError("current financial row must be ytd")
+    expected_prior_type = "quarterly" if prior_period == "Q1" else "ytd"
+    if prior_ytd.get("period_type") != expected_prior_type:
+        raise ValueError("prior financial row has incompatible period type")
     fiscal_year = current_ytd.get("fiscal_year")
     if (
         not isinstance(fiscal_year, Real)
@@ -394,7 +432,7 @@ def derive_discrete_quarter(current_ytd: pd.Series, prior_ytd: pd.Series) -> pd.
 
     result = current_ytd.copy(deep=True)
     result["value"] = current_value - prior_value
-    result["start_date"] = prior_ytd.get("end_date")
+    result["start_date"] = (prior_end + pd.Timedelta(days=1)).date().isoformat()
     result["period_type"] = "quarterly"
     result["derived"] = True
     provenance = sorted(
