@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from webull_lab.financials import build_financial_statements
 from webull_lab.tutorial_fixtures import FixtureDataClient, FixtureResponse, FixtureSecClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,6 +162,30 @@ def test_fixture_clients_validate_inputs_and_do_not_mutate_payloads(tmp_path):
         FixtureSecClient(missing)
     with pytest.raises(ValueError, match="bars fixture"):
         FixtureDataClient(missing / "bars.json")
+
+
+def test_tutorial_fixture_derives_total_debt_from_matched_components():
+    payload = json.loads(
+        (FIXTURE_ROOT / "sec" / "aapl_companyfacts_tutorial.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    balance = build_financial_statements("AAPL", "320193", payload)[
+        "balance_sheet"
+    ]
+    debt = balance.loc[balance["canonical_metric"] == "debt"].set_index(
+        "fiscal_year"
+    )
+
+    assert debt["value"].to_dict() == {
+        2023: 105_103_000_000,
+        2024: 96_662_000_000,
+    }
+    assert debt["derived"].tolist() == [True, True]
+    assert set(debt["source_tag"]) == {
+        "LongTermDebtCurrent + LongTermDebtNoncurrent"
+    }
 
 
 def test_notebook_executes_offline_top_to_bottom_without_network_or_credentials(
