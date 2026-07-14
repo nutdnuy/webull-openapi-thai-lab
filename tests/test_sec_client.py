@@ -1,4 +1,5 @@
 import json
+import traceback
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,17 @@ def make_settings(tmp_path, max_attempts=3):
     )
 
 
+def test_sec_client_constructs_requests_session_by_default(tmp_path, monkeypatch):
+    expected_session = object()
+    monkeypatch.setattr(sec_client_module.requests, "Session", lambda: expected_session)
+
+    client = SecClient(make_settings(tmp_path))
+
+    assert client.session is expected_session
+    assert client.cache_hits == 0
+    assert client.network_requests == 0
+
+
 def test_normalize_cik_zero_pads_digits():
     assert normalize_cik(320193) == "0000320193"
     assert normalize_cik(" 320193 ") == "0000320193"
@@ -90,6 +102,34 @@ def test_get_json_sends_headers_and_timeout_then_reuses_written_cache(tmp_path):
     assert client.cache_hits == 1
 
 
+def test_get_json_returns_preexisting_object_cache_without_network(tmp_path):
+    cache_path = tmp_path / "cache/data.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"cached": true}', encoding="utf-8")
+    session = FakeSession()
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    assert client.get_json("https://example.test/data", "data.json") == {"cached": True}
+    assert client.cache_hits == 1
+    assert client.network_requests == 0
+    assert session.calls == []
+
+
+def test_get_json_rejects_preexisting_non_object_cache_without_network(tmp_path):
+    cache_path = tmp_path / "cache/data.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text("[]", encoding="utf-8")
+    session = FakeSession()
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    with pytest.raises(sec_client_module.SecDataError, match="JSON object"):
+        client.get_json("https://example.test/data", "data.json")
+
+    assert client.cache_hits == 0
+    assert client.network_requests == 0
+    assert session.calls == []
+
+
 def test_resolve_cik_normalizes_ticker_and_finds_fixture_company(tmp_path):
     companies = json.loads((FIXTURES / "company_tickers_sample.json").read_text())
     session = FakeSession(FakeResponse(payload=companies))
@@ -120,12 +160,15 @@ def test_resolve_cik_rejects_unknown_normalized_ticker(tmp_path):
         client.resolve_cik(" nope ")
 
 
-def test_get_json_retries_429_then_succeeds_with_backoff(tmp_path, monkeypatch):
+@pytest.mark.parametrize("status_code", [429, 500, 502, 503, 504])
+def test_get_json_retries_required_status_then_succeeds_with_backoff(
+    tmp_path, monkeypatch, status_code
+):
     sleeps = []
     monkeypatch.setattr(sec_client_module.time, "sleep", sleeps.append)
     monkeypatch.setattr(sec_client_module.random, "uniform", lambda _start, _end: 0.0)
     session = FakeSession(
-        FakeResponse(status_code=429, payload={"error": "busy"}),
+        FakeResponse(status_code=status_code, payload={"error": "busy"}),
         FakeResponse(payload={"ok": True}),
     )
     client = SecClient(make_settings(tmp_path), session=session)
@@ -198,6 +241,7 @@ def test_get_json_rejects_invalid_response_json_safely(tmp_path):
         client.get_json("https://example.test/data", "data.json")
 
     assert "RAW-CANARY" not in str(error.value)
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
 
 
 def test_get_json_corrupt_cache_raises_without_network(tmp_path):
@@ -211,8 +255,43 @@ def test_get_json_corrupt_cache_raises_without_network(tmp_path):
         client.get_json("https://example.test/data", "data.json")
 
     assert "RAW-CANARY" not in str(error.value)
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
     assert session.calls == []
     assert client.network_requests == 0
+
+
+def test_get_json_cache_read_exception_traceback_is_safe(tmp_path, monkeypatch):
+    cache_path = tmp_path / "cache/data.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text("{}", encoding="utf-8")
+
+    def raise_read_error(_path, **_kwargs):
+        raise OSError("RAW-CANARY")
+
+    monkeypatch.setattr(Path, "read_text", raise_read_error)
+    client = SecClient(make_settings(tmp_path), session=FakeSession())
+
+    with pytest.raises(sec_client_module.SecDataError) as error:
+        client.get_json("https://example.test/data", "data.json")
+
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+    assert error.value.__cause__ is None
+    assert error.value.__suppress_context__ is True
+    assert client.network_requests == 0
+
+
+def test_get_json_request_exception_is_safe_and_counted(tmp_path):
+    class RaisingSession:
+        def get(self, _url, **_kwargs):
+            raise requests.RequestException("RAW-CANARY")
+
+    client = SecClient(make_settings(tmp_path), session=RaisingSession())
+
+    with pytest.raises(sec_client_module.SecDataError) as error:
+        client.get_json("https://example.test/data", "data.json")
+
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+    assert client.network_requests == 1
 
 
 def test_get_submissions_returns_valid_fixture_and_uses_normalized_cik(tmp_path):

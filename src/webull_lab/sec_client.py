@@ -43,8 +43,8 @@ class SecClient:
         if cache_path.exists():
             try:
                 payload = json.loads(cache_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as error:
-                raise SecDataError("SEC cache contains invalid JSON") from error
+            except (OSError, ValueError):
+                raise SecDataError("SEC cache contains invalid JSON") from None
             if not isinstance(payload, dict):
                 raise SecDataError("SEC cache must contain a JSON object")
             self.cache_hits += 1
@@ -62,8 +62,8 @@ class SecClient:
                     },
                     timeout=self.settings.timeout_seconds,
                 )
-            except requests.RequestException as error:
-                raise SecDataError("SEC request failed") from error
+            except requests.RequestException:
+                raise SecDataError("SEC request failed") from None
 
             if response.status_code < 400:
                 break
@@ -87,8 +87,8 @@ class SecClient:
             raise SecDataError("SEC request failed")
         try:
             payload = response.json()
-        except ValueError as error:
-            raise SecDataError("SEC response contains invalid JSON") from error
+        except ValueError:
+            raise SecDataError("SEC response contains invalid JSON") from None
         if not isinstance(payload, dict):
             raise SecDataError("SEC response must contain a JSON object")
         cache_path.parent.mkdir(parents=True, exist_ok=True)
