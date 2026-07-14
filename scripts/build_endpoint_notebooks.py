@@ -952,6 +952,17 @@ README_TEMPLATE = """# Webull Thailand Endpoint Tutorial Notebooks
 
 ถ้าต้องการ notebook แนว Quantopian lecture ที่ใช้ Webull historical bars เป็น
 data source ให้เปิด [Webull Quantopian-Style Research Notebooks](quantopian_style/README.md).
+
+## SEC Financial Data Path
+
+เรียนการแปลง ticker เป็น CIK, normalize XBRL statements, ใช้ filed date ลด
+look-ahead bias และเติม Webull daily prices แบบ optional จาก
+[คู่มือ SEC EDGAR + Webull Financial Data](../docs/06-sec-webull-financials-th.md)
+แล้วเปิด [SEC Webull Financials Beginner Notebook](sec_webull_financials_beginner.ipynb).
+
+Notebook นี้สร้างแบบ deterministic จาก
+`scripts/build_sec_webull_financials_notebook.py`, เริ่ม offline ด้วย fixtures และรองรับ
+SEC-only fallback เมื่อ Webull market-data permission ไม่พร้อม
 """
 
 

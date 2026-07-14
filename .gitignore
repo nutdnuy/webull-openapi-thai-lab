@@ -11,7 +11,10 @@ token.txt
 *.sqlite
 *.db
 data/raw/
+/data/private/sec-cache/
+/data/private/acceptance/
 data/private/
+/outputs/live-smoke/
 outputs/
 site/
 .pytest_cache/

@@ -1,0 +1,42 @@
+name: SEC Webull Live Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: US ticker
+        required: true
+        default: AAPL
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run live read-only company data pipeline
+        env:
+          SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
+          WEBULL_APP_KEY: ${{ secrets.WEBULL_APP_KEY }}
+          WEBULL_APP_SECRET: ${{ secrets.WEBULL_APP_SECRET }}
+        run: webull-lab company-data "${{ inputs.ticker }}" --years 5 --output-dir outputs/live-smoke
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: sec-webull-live-smoke
+          path: outputs/live-smoke/run_manifest.json
+          if-no-files-found: error

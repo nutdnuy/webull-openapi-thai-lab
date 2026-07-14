@@ -21,7 +21,7 @@ webull-lab doctor
 ควรเห็น environment เป็น `uat` และ trading endpoint เป็น:
 
 ```text
-us-openapi-alb.uat.webullbroker.com
+api.sandbox.webull.com
 ```
 
 เมื่อ configuration โหลดสำเร็จ คำสั่งนี้ redact app key, app secret และ account id ก่อนแสดงผล จึงใช้ตรวจ setup ได้โดยไม่เผลอ print secret แบบเต็ม
