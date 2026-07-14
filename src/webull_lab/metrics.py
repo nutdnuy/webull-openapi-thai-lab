@@ -497,4 +497,9 @@ def build_financial_metrics(
     add(
         MetricResult("price_to_book", None, "missing_input", price_to_book_date),
     )
-    return pd.DataFrame(rows, columns=METRIC_COLUMNS)
+    return pd.DataFrame(
+        {
+            column: pd.Series([row[column] for row in rows], dtype="object")
+            for column in METRIC_COLUMNS
+        }
+    )

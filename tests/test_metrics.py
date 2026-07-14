@@ -692,3 +692,20 @@ def test_price_to_book_without_equity_uses_current_income_base_date():
 
     assert price_to_book["available_date"] == "2024-11-15"
     assert price_to_book["price_date"] is None
+
+
+def test_metric_table_preserves_python_objects_for_optional_fields():
+    income = pd.DataFrame(
+        [_fact("revenue", 120, 2024, "2024-11-01")]
+    )
+
+    result = build_financial_metrics(
+        {"income_statement": income}, pd.DataFrame()
+    ).set_index("metric")
+
+    assert all(pd.api.types.is_object_dtype(dtype) for dtype in result.dtypes)
+    assert result.loc["gross_margin", "value"] is None
+    assert result.loc["gross_margin", "comparison_period"] is None
+    assert result.loc["gross_margin", "price_date"] is None
+    assert result.loc["gross_margin", "available_date"] == "2024-11-01"
+    assert result.loc["gross_margin", "status"] == "missing_input"
