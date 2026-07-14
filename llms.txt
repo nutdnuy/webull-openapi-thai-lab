@@ -15,6 +15,8 @@ It is educational material, not a production trading system.
 - [Beginner notebook](notebooks/webull_th_beginner.ipynb): cell-by-cell AAPL close price tutorial for `api.webull.co.th`.
 - [Endpoint notebook index](notebooks/README.md): learning order for endpoint-split notebooks.
 - [Quantopian-style research notebooks](notebooks/quantopian_style/README.md): Webull historical-bar research notebooks inspired by QuantopianDoc topics.
+- [SEC + Webull financial guide](docs/06-sec-webull-financials-th.md): Thai read-only workflow, concepts, CLI, artifacts, exercise, and acceptance checklist.
+- [SEC Webull beginner notebook](notebooks/sec_webull_financials_beginner.ipynb): deterministic offline-first financial tutorial with optional live SEC/Webull mode.
 
 ## Lessons
 
@@ -36,8 +38,12 @@ It is educational material, not a production trading system.
 - [Market data helpers](src/webull_lab/market_data.py)
 - [Order helpers](src/webull_lab/orders.py)
 - [CLI](src/webull_lab/cli.py)
+- [SEC client](src/webull_lab/sec_client.py): identity-aware cached SEC Company Facts and Submissions transport.
+- [Financial normalizer](src/webull_lab/financials.py): auditable XBRL mapping and period selection.
+- [Company pipeline](src/webull_lab/company_pipeline.py): read-only single-ticker SEC-only-capable orchestration exposed by `webull-lab company-data AAPL --years 5`.
 - [Notebook builder](scripts/build_webull_th_beginner_notebook.py)
 - [Endpoint notebook builder](scripts/build_endpoint_notebooks.py)
+- [SEC Webull notebook builder](scripts/build_sec_webull_financials_notebook.py): deterministic source for `notebooks/sec_webull_financials_beginner.ipynb`.
 - [Quantopian-style notebook builder](scripts/build_quantopian_style_notebooks.py)
 - [Quantopian-style results runner](scripts/run_quantopian_style_workflow.py): executes the Quantopian-style notebooks offline and writes static result artifacts.
 - [Quantopian-style dashboard builder](scripts/build_quantopian_style_dashboard.py): builds the GitHub Pages dashboard from generated Quantopian-style results.

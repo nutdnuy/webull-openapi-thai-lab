@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from webull_lab.account import response_json_or_raise
+from webull_lab.clients import suppress_webull_sdk_output
 from webull_lab.config import Settings
 
 
@@ -59,7 +60,9 @@ def preview_stock_limit_buy(
     quantity: str,
 ) -> Any:
     order = build_stock_limit_buy(symbol=symbol, limit_price=limit_price, quantity=quantity)
-    return response_json_or_raise(trade_client.order_v2.preview_order(account_id, [order]))
+    with suppress_webull_sdk_output():
+        response = trade_client.order_v2.preview_order(account_id, [order])
+    return response_json_or_raise(response)
 
 
 def place_stock_limit_buy(
@@ -78,4 +81,6 @@ def place_stock_limit_buy(
         raise ValueError("WEBULL_ACCOUNT_ID is required before placing an order")
 
     order = build_stock_limit_buy(symbol=symbol, limit_price=limit_price, quantity=quantity)
-    return response_json_or_raise(trade_client.order_v2.place_order(settings.account_id, [order]))
+    with suppress_webull_sdk_output():
+        response = trade_client.order_v2.place_order(settings.account_id, [order])
+    return response_json_or_raise(response)

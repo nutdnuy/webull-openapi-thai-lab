@@ -9,5 +9,9 @@ Key reminders:
 - Keep UAT as the default.
 - Never expose or commit secrets, token files, account IDs, or private data.
 - Keep order placement guarded; examples and CLI should focus on preview first.
+- Read [the SEC + Webull financial guide](docs/06-sec-webull-financials-th.md) and
+  [deterministic beginner notebook](notebooks/sec_webull_financials_beginner.ipynb)
+  before changing `company-data`, its builder, or financial artifacts.
+- The SEC workflow is read-only, requires `SEC_CONTACT_EMAIL`, supports SEC-only mode,
+  and must never call order APIs or weaken order guardrails.
 - Run `python -m pytest -q` and `python -m ruff check .` before pushing changes.
-

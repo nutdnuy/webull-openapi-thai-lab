@@ -12,6 +12,7 @@ When an AI assistant receives only the GitHub link, read these files in order:
 3. `.env.example` for configuration names without secrets.
 4. `src/webull_lab/config.py` for environment loading and redaction rules.
 5. `src/webull_lab/orders.py` before changing anything related to orders.
+6. `docs/06-sec-webull-financials-th.md` for the SEC + Webull financial workflow.
 
 ## Project Intent
 
@@ -32,6 +33,9 @@ When an AI assistant receives only the GitHub link, read these files in order:
 - Do not print raw secrets or raw account IDs in logs, errors, docs, or tests.
 - Treat investment/trading content as education and risk-aware workflow design, not
   return prediction.
+- Treat the SEC financial workflow as read-only. It requires `SEC_CONTACT_EMAIL`, may
+  run in SEC-only mode without Webull credentials, and must never weaken the existing
+  order guardrails or call Webull order APIs.
 
 ## Repository Map
 
@@ -39,9 +43,17 @@ When an AI assistant receives only the GitHub link, read these files in order:
 - `docs/` - Thai tutorial lessons.
 - `notebooks/webull_th_beginner.ipynb` - beginner AAPL close price notebook for `api.webull.co.th`.
 - `notebooks/README.md` - endpoint-split notebook learning order.
+- `docs/06-sec-webull-financials-th.md` - Thai SEC + Webull financial data guide.
+- `notebooks/sec_webull_financials_beginner.ipynb` - deterministic offline-first SEC
+  financial notebook with optional Webull prices.
 - `notebooks/00_auth_token.ipynb` through `notebooks/05_order_preview_guardrails.ipynb` - endpoint-focused notebooks with offline samples and guarded live mode.
 - `scripts/build_webull_th_beginner_notebook.py` - source builder for regenerating the notebook.
 - `scripts/build_endpoint_notebooks.py` - source builder for regenerating endpoint-split notebooks.
+- `scripts/build_sec_webull_financials_notebook.py` - deterministic source builder for
+  `notebooks/sec_webull_financials_beginner.ipynb`.
+- `src/webull_lab/sec_client.py` and `src/webull_lab/financials.py` - read-only SEC
+  transport/cache and auditable XBRL normalization.
+- `src/webull_lab/company_pipeline.py` - SEC-only-capable single-ticker orchestration.
 - `src/webull_lab/config.py` - `.env` loading, UAT/prod endpoint selection, secret redaction.
 - `src/webull_lab/clients.py` - Webull SDK client factories.
 - `src/webull_lab/account.py` - read-only account helper functions.
@@ -66,6 +78,7 @@ webull-lab doctor
 webull-lab account-list
 webull-lab stock-snapshot AAPL
 webull-lab preview-stock-buy AAPL 100 1
+webull-lab company-data AAPL --years 5
 ```
 
 ## Development Rules

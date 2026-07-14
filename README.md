@@ -79,6 +79,18 @@ Notebook นี้เริ่มจาก offline mode ก่อน จึง r
 
 - [Webull Quantopian-Style Research Notebooks](notebooks/quantopian_style/README.md)
 
+ถ้าต้องการสร้างงบการเงินที่ audit ได้จาก SEC และเติม Webull daily prices แบบ optional:
+
+- [คู่มือ SEC EDGAR + Webull Financial Data](docs/06-sec-webull-financials-th.md)
+- [SEC Webull Financials Beginner Notebook](notebooks/sec_webull_financials_beginner.ipynb)
+
+เริ่มด้วย notebook แบบ offline ก่อน หรือใช้ CLI แบบ SEC-only ได้เมื่อกำหนด
+`SEC_CONTACT_EMAIL` โดยไม่ต้องมี Webull credentials:
+
+```bash
+webull-lab company-data AAPL --years 5
+```
+
 ## Quantopian-Style Results Workflow
 
 GitHub Actions รันชุด Webull Quantopian-style notebooks แบบ offline-safe แล้ว publish เป็น static dashboard ผ่าน GitHub Pages:
@@ -97,7 +109,8 @@ GitHub Actions รันชุด Webull Quantopian-style notebooks แบบ of
 4. [ดึง Market Data](docs/03-market-data-th.md)
 5. [Preview order และ guardrails](docs/04-order-preview-and-guardrails-th.md)
 6. [ใช้ AI ช่วย dev กับ Webull docs](docs/05-ai-assisted-webull-dev-th.md)
-7. [Publish ขึ้น GitHub](docs/99-publishing-github-th.md)
+7. [สร้าง SEC financials และเติม Webull prices](docs/06-sec-webull-financials-th.md)
+8. [Publish ขึ้น GitHub](docs/99-publishing-github-th.md)
 
 ## สำหรับ Claude / Codex
 
@@ -113,6 +126,7 @@ Regenerate notebook:
 python scripts/build_webull_th_beginner_notebook.py
 python scripts/build_endpoint_notebooks.py
 python scripts/build_quantopian_style_notebooks.py
+python scripts/build_sec_webull_financials_notebook.py
 ```
 
 ## Official Sources
@@ -120,3 +134,4 @@ python scripts/build_quantopian_style_notebooks.py
 - Webull API Docs: https://developer.webull.com/apis/docs/
 - Webull llms.txt: https://developer.webull.com/apis/llms.txt
 - Webull Python SDK: https://github.com/webull-inc/webull-openapi-python-sdk
+- SEC EDGAR APIs: https://www.sec.gov/search-filings/edgar-application-programming-interfaces

@@ -16,6 +16,7 @@
 - ตรวจ configuration ด้วย `webull-lab doctor`
 - เรียกบัญชี UAT ด้วย `webull-lab account-list`
 - ดึง snapshot ของหุ้นด้วย `webull-lab stock-snapshot AAPL`
+- สร้างงบ SEC แบบ auditable ด้วย `webull-lab company-data AAPL --years 5`
 - เปิด notebook แนว Quantopian-style เพื่อทำ research จาก Webull historical bars
 - preview limit buy order ด้วย `webull-lab preview-stock-buy AAPL 100 1`
 - ใช้ Webull `llms.txt` ให้ AI assistant ช่วย dev โดยยังบังคับ fake-client tests, ไม่มี hard-coded secrets และไม่มี live order จาก CLI
@@ -26,7 +27,7 @@
    อ่าน `docs/01-api-key-setup-th.md` เพื่อสร้าง `.env`, ตั้ง `WEBULL_ENV=uat`, เก็บ token ใน `.webull-token/` และเข้าใจว่า `webull-lab doctor` จะแสดง app key, app secret และ account id แบบ redacted
 
 2. เรียก API ครั้งแรก
-   อ่าน `docs/02-first-call-th.md` แล้วรัน `webull-lab doctor` ตามด้วย `webull-lab account-list` เพื่อยืนยันว่าเชื่อมต่อ UAT endpoint `us-openapi-alb.uat.webullbroker.com` ได้
+   อ่าน `docs/02-first-call-th.md` แล้วรัน `webull-lab doctor` ตามด้วย `webull-lab account-list` เพื่อยืนยันว่าเชื่อมต่อ UAT endpoint `api.sandbox.webull.com` ได้
 
 3. ดึง market data
    อ่าน `docs/03-market-data-th.md` แล้วรัน `webull-lab stock-snapshot AAPL` หรือเปิด `notebooks/01_stock_market_data.ipynb` ปัจจุบัน CLI ตัวอย่างเป็น stock snapshot ส่วน notebook รองรับ endpoint market data หลายแบบ
@@ -46,7 +47,13 @@
 8. ใช้ AI ช่วยพัฒนาอย่างปลอดภัย
    อ่าน `docs/05-ai-assisted-webull-dev-th.md` เพื่อใช้ official docs และ `llms.txt` เป็น context ให้ AI assistant พร้อมข้อกำหนด fake-client tests และข้อห้ามเรื่อง secrets/live orders
 
-9. Publish ขึ้น GitHub
+9. สร้าง SEC financials และเติม Webull prices แบบ optional
+   อ่าน [คู่มือ SEC EDGAR + Webull Financial Data](06-sec-webull-financials-th.md)
+   แล้วเปิด [SEC Webull Financials Beginner Notebook](../notebooks/sec_webull_financials_beginner.ipynb).
+   เริ่ม offline ก่อน จากนั้นใช้ `webull-lab company-data AAPL --years 5` ใน SEC-only
+   mode หรือเติม Webull market data เมื่อมี OpenAPI permission
+
+10. Publish ขึ้น GitHub
    อ่าน `docs/99-publishing-github-th.md` เพื่อเช็ก secret, รัน tests, สร้าง repo และเปิด secret scanning ก่อนเผยแพร่
 
 ## หลักคิด

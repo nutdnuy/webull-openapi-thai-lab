@@ -1,0 +1,52 @@
+name: SEC Webull Live Smoke
+
+# Immutable pins verified against the official release tags on 2026-07-14:
+# https://github.com/actions/checkout/releases/tag/v4.3.1
+# https://github.com/actions/setup-python/releases/tag/v5.6.0
+# https://github.com/actions/upload-artifact/releases/tag/v4.6.2
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: US ticker
+        required: true
+        default: AAPL
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install locked runtime and local project
+        run: |
+          python -m pip install --require-hashes --no-build-isolation --disable-pip-version-check -r .github/requirements/sec-webull-live-smoke.txt
+          python -m pip install --no-deps --no-build-isolation --disable-pip-version-check .
+
+      - name: Run live read-only company data pipeline
+        env:
+          TICKER: ${{ inputs.ticker }}
+          SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
+          WEBULL_APP_KEY: ${{ secrets.WEBULL_APP_KEY }}
+          WEBULL_APP_SECRET: ${{ secrets.WEBULL_APP_SECRET }}
+        run: webull-lab company-data "$TICKER" --years 5 --output-dir outputs/live-smoke
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sec-webull-live-smoke
+          path: outputs/live-smoke/run_manifest.json
+          if-no-files-found: error

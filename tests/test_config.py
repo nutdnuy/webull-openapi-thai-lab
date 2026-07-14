@@ -28,7 +28,7 @@ def test_load_settings_uses_uat_endpoint_by_default(monkeypatch, tmp_path):
 
     assert settings.env == "uat"
     assert settings.region == "us"
-    assert settings.trading_endpoint == "us-openapi-alb.uat.webullbroker.com"
+    assert settings.trading_endpoint == "api.sandbox.webull.com"
     assert settings.app_key == "key_123"
     assert settings.app_secret == "secret_456"
     assert settings.token_dir == tmp_path / "token"
