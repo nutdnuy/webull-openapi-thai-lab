@@ -1,5 +1,6 @@
 import json
 import traceback
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,53 @@ def test_get_json_rejects_preexisting_non_object_cache_without_network(tmp_path)
     assert session.calls == []
 
 
+@pytest.mark.parametrize("cache_name", ["", "../outside.json"])
+def test_get_json_rejects_empty_or_traversing_cache_name(tmp_path, cache_name):
+    outside_path = tmp_path / "outside.json"
+    outside_path.write_text('{"outside": true}', encoding="utf-8")
+    session = FakeSession(FakeResponse(payload={"network": True}))
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    with pytest.raises(sec_client_module.SecDataError, match="Invalid SEC cache path"):
+        client.get_json("https://example.test/data", cache_name)
+
+    assert outside_path.read_text(encoding="utf-8") == '{"outside": true}'
+    assert session.calls == []
+
+
+def test_get_json_rejects_absolute_cache_name_without_outside_read(tmp_path):
+    outside_path = tmp_path / "outside.json"
+    outside_path.write_text('{"RAW-CANARY": true}', encoding="utf-8")
+    client = SecClient(make_settings(tmp_path), session=FakeSession())
+
+    with pytest.raises(sec_client_module.SecDataError) as error:
+        client.get_json("https://example.test/data", str(outside_path))
+
+    formatted = "".join(traceback.format_exception(error.value))
+    assert "Invalid SEC cache path" in formatted
+    assert "RAW-CANARY" not in formatted
+    assert str(outside_path) not in str(error.value)
+
+
+def test_get_json_rejects_cache_symlink_escape_without_outside_read(tmp_path):
+    cache_dir = tmp_path / "cache"
+    outside_dir = tmp_path / "outside"
+    cache_dir.mkdir()
+    outside_dir.mkdir()
+    outside_path = outside_dir / "data.json"
+    outside_path.write_text('{"RAW-CANARY": true}', encoding="utf-8")
+    (cache_dir / "escape").symlink_to(outside_dir, target_is_directory=True)
+    session = FakeSession(FakeResponse(payload={"network": True}))
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    with pytest.raises(sec_client_module.SecDataError, match="Invalid SEC cache path") as error:
+        client.get_json("https://example.test/data", "escape/data.json")
+
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+    assert outside_path.read_text(encoding="utf-8") == '{"RAW-CANARY": true}'
+    assert session.calls == []
+
+
 def test_resolve_cik_normalizes_ticker_and_finds_fixture_company(tmp_path):
     companies = json.loads((FIXTURES / "company_tickers_sample.json").read_text())
     session = FakeSession(FakeResponse(payload=companies))
@@ -158,6 +206,28 @@ def test_resolve_cik_rejects_unknown_normalized_ticker(tmp_path):
 
     with pytest.raises(SecNotFoundError, match="ticker 'NOPE'"):
         client.resolve_cik(" nope ")
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        pytest.param("RAW-CANARY", id="non-object"),
+        pytest.param({"ticker": "AAPL"}, id="missing-cik"),
+        pytest.param({"ticker": "AAPL", "cik_str": "RAW-CANARY"}, id="invalid-cik"),
+        pytest.param({"ticker": 123, "cik_str": 320193}, id="invalid-ticker"),
+    ],
+)
+def test_resolve_cik_rejects_malformed_company_record_safely(tmp_path, record):
+    client = SecClient(
+        make_settings(tmp_path), session=FakeSession(FakeResponse(payload={"0": record}))
+    )
+
+    with pytest.raises(sec_client_module.SecDataError, match="malformed company ticker") as error:
+        client.resolve_cik("AAPL")
+
+    formatted = "".join(traceback.format_exception(error.value))
+    assert "RAW-CANARY" not in formatted
+    assert not isinstance(error.value, (AttributeError, KeyError, ValueError))
 
 
 @pytest.mark.parametrize("status_code", [429, 500, 502, 503, 504])
@@ -191,6 +261,73 @@ def test_get_json_respects_numeric_retry_after(tmp_path, monkeypatch):
     client.get_json("https://example.test/data", "data.json")
 
     assert sleeps == [7.5]
+
+
+def test_get_json_respects_http_date_retry_after(tmp_path, monkeypatch):
+    sleeps = []
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(sec_client_module, "_utc_now", lambda: now)
+    monkeypatch.setattr(sec_client_module.time, "sleep", sleeps.append)
+    session = FakeSession(
+        FakeResponse(
+            status_code=503,
+            payload={},
+            headers={"Retry-After": "Tue, 14 Jul 2026 12:00:30 GMT"},
+        ),
+        FakeResponse(payload={"ok": True}),
+    )
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    client.get_json("https://example.test/data", "data.json")
+
+    assert sleeps == [30.0]
+
+
+@pytest.mark.parametrize("retry_after", ["-1", "nan", "inf", "-inf", "invalid"])
+def test_get_json_invalid_retry_after_falls_back_to_backoff(
+    tmp_path, monkeypatch, retry_after
+):
+    sleeps = []
+    monkeypatch.setattr(sec_client_module.time, "sleep", sleeps.append)
+    monkeypatch.setattr(sec_client_module.random, "uniform", lambda _start, _end: 0.0)
+    session = FakeSession(
+        FakeResponse(status_code=503, payload={}, headers={"Retry-After": retry_after}),
+        FakeResponse(payload={"ok": True}),
+    )
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    client.get_json("https://example.test/data", "data.json")
+
+    assert sleeps == [1.0]
+
+
+def test_get_json_clamps_oversized_retry_after(tmp_path, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(sec_client_module.time, "sleep", sleeps.append)
+    session = FakeSession(
+        FakeResponse(status_code=503, payload={}, headers={"Retry-After": "600"}),
+        FakeResponse(payload={"ok": True}),
+    )
+    client = SecClient(make_settings(tmp_path), session=session)
+
+    client.get_json("https://example.test/data", "data.json")
+
+    assert sleeps == [sec_client_module.MAX_RETRY_DELAY_SECONDS]
+
+
+def test_get_json_clamps_exponential_fallback(tmp_path, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(sec_client_module.time, "sleep", sleeps.append)
+    monkeypatch.setattr(sec_client_module.random, "uniform", lambda _start, _end: 0.0)
+    session = FakeSession(
+        *[FakeResponse(status_code=503, payload={}) for _ in range(7)],
+        FakeResponse(payload={"ok": True}),
+    )
+    client = SecClient(make_settings(tmp_path, max_attempts=8), session=session)
+
+    client.get_json("https://example.test/data", "data.json")
+
+    assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0]
 
 
 def test_get_json_exhausted_retry_raises_safe_error(tmp_path, monkeypatch):
@@ -242,6 +379,71 @@ def test_get_json_rejects_invalid_response_json_safely(tmp_path):
 
     assert "RAW-CANARY" not in str(error.value)
     assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+
+
+def test_get_json_cleans_temp_file_when_json_dump_fails(tmp_path, monkeypatch):
+    def fail_dump(_payload, _temporary):
+        raise TypeError("RAW-CANARY")
+
+    monkeypatch.setattr(sec_client_module.json, "dump", fail_dump)
+    client = SecClient(
+        make_settings(tmp_path), session=FakeSession(FakeResponse(payload={"ok": True}))
+    )
+
+    with pytest.raises(sec_client_module.SecDataError) as error:
+        client.get_json("https://example.test/data", "data.json")
+
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+    assert list((tmp_path / "cache").iterdir()) == []
+
+
+def test_get_json_cleans_temp_file_when_flush_fails(tmp_path, monkeypatch):
+    real_named_temporary_file = sec_client_module.tempfile.NamedTemporaryFile
+
+    class FlushFailingTemporary:
+        def __init__(self, *args, **kwargs):
+            self.wrapped = real_named_temporary_file(*args, **kwargs)
+            self.name = self.wrapped.name
+
+        def __enter__(self):
+            self.wrapped.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.wrapped.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self.wrapped, name)
+
+        def flush(self):
+            raise OSError("RAW-CANARY")
+
+    monkeypatch.setattr(sec_client_module.tempfile, "NamedTemporaryFile", FlushFailingTemporary)
+    client = SecClient(
+        make_settings(tmp_path), session=FakeSession(FakeResponse(payload={"ok": True}))
+    )
+
+    with pytest.raises(sec_client_module.SecDataError) as error:
+        client.get_json("https://example.test/data", "data.json")
+
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+    assert list((tmp_path / "cache").iterdir()) == []
+
+
+def test_get_json_cleans_temp_file_when_replace_fails(tmp_path, monkeypatch):
+    def fail_replace(_path, _target):
+        raise OSError("RAW-CANARY")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    client = SecClient(
+        make_settings(tmp_path), session=FakeSession(FakeResponse(payload={"ok": True}))
+    )
+
+    with pytest.raises(sec_client_module.SecDataError) as error:
+        client.get_json("https://example.test/data", "data.json")
+
+    assert "RAW-CANARY" not in "".join(traceback.format_exception(error.value))
+    assert list((tmp_path / "cache").iterdir()) == []
 
 
 def test_get_json_corrupt_cache_raises_without_network(tmp_path):
