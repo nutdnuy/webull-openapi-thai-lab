@@ -364,8 +364,12 @@ def test_live_mode_supports_non_aapl_ticker_consistently(tmp_path, monkeypatch):
             return copy.deepcopy(companyfacts)
 
     class StubMarketData:
-        def get_history_bar(self, symbol, category, timespan):
+        def get_history_bar(self, symbol, category, timespan, **kwargs):
             assert (symbol, category, timespan) == ("MSFT", "US_STOCK", "D")
+            if kwargs:
+                assert kwargs["count"] == "1200"
+                assert isinstance(kwargs["start_time"], int)
+                assert isinstance(kwargs["end_time"], int)
             return FixtureResponse(bars)
 
     class StubDataClient:

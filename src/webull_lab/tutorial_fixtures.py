@@ -39,7 +39,17 @@ class FixtureMarketData:
             raise ValueError("Offline bars fixture path must be an existing file")
         self.bars_path = path
 
-    def get_history_bar(self, symbol: str, category: str, timespan: str) -> FixtureResponse:
+    def get_history_bar(
+        self,
+        symbol: str,
+        category: str,
+        timespan: str,
+        count: str = "200",
+        real_time_required: bool | None = None,
+        trading_sessions: list[str] | str | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+    ) -> FixtureResponse:
         if symbol != _TICKER or category != "US_STOCK" or timespan != "D":
             raise ValueError("Offline fixture supports AAPL daily US stock bars only")
         try:
