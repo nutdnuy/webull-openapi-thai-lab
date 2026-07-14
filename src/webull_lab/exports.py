@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
-from numbers import Integral
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
@@ -128,12 +128,20 @@ def _validate_inputs(
     return sanitized_warnings, validated_raw
 
 
-def _is_null(value: object) -> bool:
-    return value is None or value is pd.NA or value is pd.NaT
+def _is_null(value: object, *, allow_scalar_nan: bool = False) -> bool:
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    if not allow_scalar_nan:
+        return False
+    try:
+        result = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(result, bool) and result
 
 
 def _as_string(value: object) -> str | None:
-    if _is_null(value):
+    if _is_null(value, allow_scalar_nan=True):
         return None
     if not isinstance(value, str):
         raise ValueError("string field is invalid")
@@ -141,7 +149,7 @@ def _as_string(value: object) -> str | None:
 
 
 def _as_date(value: object) -> date | None:
-    if _is_null(value):
+    if _is_null(value, allow_scalar_nan=True):
         return None
     if type(value) is date:
         return value
@@ -156,9 +164,16 @@ def _as_date(value: object) -> date | None:
 def _as_int(value: object) -> int | None:
     if _is_null(value):
         return None
-    if isinstance(value, bool) or not isinstance(value, Integral):
+    if isinstance(value, bool):
         raise ValueError("integer field is invalid")
-    return int(value)
+    if isinstance(value, Integral):
+        return int(value)
+    if not isinstance(value, Real) or not math.isfinite(value):
+        raise ValueError("integer field is invalid")
+    normalized = int(value)
+    if value != normalized:
+        raise ValueError("integer field is invalid")
+    return normalized
 
 
 def _as_bool(value: object) -> bool | None:

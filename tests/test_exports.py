@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -281,6 +282,151 @@ def test_real_financial_metric_and_price_outputs_use_canonical_export_schemas(tm
     assert pq.read_schema(tmp_path / "financial_metrics.parquet").remove_metadata() == (
         METRIC_SCHEMA
     )
+
+
+def test_companyfacts_float_fiscal_year_exports_end_to_end(tmp_path):
+    companyfacts = {
+        "cik": 320193,
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 100,
+                                "start": "2022-10-01",
+                                "end": "2023-09-30",
+                                "accn": "0000320193-23-000106",
+                                "fy": 2023.0,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2023-11-03",
+                                "frame": "CY2023",
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+    }
+    statements = build_financial_statements("AAPL", "320193", companyfacts)
+
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        statements,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        "unavailable",
+    )
+
+    assert pq.read_table(tmp_path / "income_statement.parquet")["fiscal_year"].to_pylist() == [
+        2023
+    ]
+
+
+def test_numpy_integral_float_fiscal_year_exports_as_int64(tmp_path):
+    statements = _statements()
+    statements["income_statement"]["fiscal_year"] = np.float64(2023.0)
+
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        statements,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        "unavailable",
+    )
+
+    assert pq.read_table(tmp_path / "income_statement.parquet")["fiscal_year"].to_pylist() == [
+        2023
+    ]
+
+
+@pytest.mark.parametrize(
+    "fiscal_year",
+    [True, 2023.5, np.float64("nan"), np.float64("inf"), 2**63],
+)
+def test_invalid_or_out_of_range_fiscal_year_is_rejected(tmp_path, fiscal_year):
+    statements = _statements()
+    statements["income_statement"]["fiscal_year"] = fiscal_year
+
+    with pytest.raises(ValueError, match="field 'fiscal_year' is invalid"):
+        write_company_artifacts(
+            tmp_path,
+            "AAPL",
+            "0000320193",
+            statements,
+            pd.DataFrame(),
+            pd.DataFrame(),
+            "unavailable",
+        )
+
+    assert not (tmp_path / "run_manifest.json").exists()
+
+
+def test_optional_numpy_nan_cells_export_as_null_without_mutating_frame(tmp_path):
+    statements = _statements()
+    income = statements["income_statement"]
+    income["start_date"] = np.nan
+    income["end_date"] = np.nan
+    income["frame"] = np.nan
+    original = income.copy(deep=True)
+
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        statements,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        "unavailable",
+    )
+
+    row = pq.read_table(tmp_path / "income_statement.parquet").to_pylist()[0]
+    assert row["start_date"] is None
+    assert row["end_date"] is None
+    assert row["frame"] is None
+    pd.testing.assert_frame_equal(income, original)
+
+
+def test_nonscalar_optional_cell_rejects_safely(tmp_path):
+    statements = _statements()
+    statements["income_statement"]["frame"] = [["secret-nonscalar"]]
+
+    with pytest.raises(ValueError) as error:
+        write_company_artifacts(
+            tmp_path,
+            "AAPL",
+            "0000320193",
+            statements,
+            pd.DataFrame(),
+            pd.DataFrame(),
+            "unavailable",
+        )
+
+    assert "secret-nonscalar" not in str(error.value)
+    assert not (tmp_path / "run_manifest.json").exists()
+
+
+def test_nonfinite_statement_value_is_rejected_instead_of_exported_as_null(tmp_path):
+    statements = _statements()
+    statements["income_statement"]["value"] = np.nan
+
+    with pytest.raises(ValueError, match="field 'value' is invalid"):
+        write_company_artifacts(
+            tmp_path,
+            "AAPL",
+            "0000320193",
+            statements,
+            pd.DataFrame(),
+            pd.DataFrame(),
+            "unavailable",
+        )
+
+    assert not (tmp_path / "run_manifest.json").exists()
 
 
 def test_staging_failure_leaves_previous_run_artifacts_untouched(tmp_path):
