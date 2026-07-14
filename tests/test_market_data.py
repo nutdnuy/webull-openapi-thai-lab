@@ -194,6 +194,16 @@ def test_normalize_stock_bars_rejects_out_of_range_timestamp_safely():
     assert "999999" not in str(exc_info.value)
 
 
+def test_normalize_stock_bars_rejects_unicode_numeric_timestamp_safely():
+    row = _valid_bar(time="²")
+
+    with pytest.raises(ValueError) as exc_info:
+        normalize_stock_bars([row])
+
+    assert str(exc_info.value) == "Webull bar row 0 field 'time' is invalid"
+    assert "²" not in str(exc_info.value)
+
+
 @pytest.mark.parametrize("field", ["open", "high", "low", "close"])
 @pytest.mark.parametrize("value", [True, -1, "-0.01", float("nan"), float("inf"), "bad"])
 def test_normalize_stock_bars_rejects_invalid_prices(field, value):
@@ -209,6 +219,16 @@ def test_normalize_stock_bars_rejects_invalid_volume(volume):
 
     with pytest.raises(ValueError, match="row 0 field 'volume'"):
         normalize_stock_bars([row])
+
+
+def test_normalize_stock_bars_rejects_unicode_numeric_volume_safely():
+    row = _valid_bar(volume="²")
+
+    with pytest.raises(ValueError) as exc_info:
+        normalize_stock_bars([row])
+
+    assert str(exc_info.value) == "Webull bar row 0 field 'volume' is invalid"
+    assert "²" not in str(exc_info.value)
 
 
 def test_normalize_stock_bars_rejects_missing_fields_without_echoing_row_data():

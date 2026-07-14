@@ -88,7 +88,7 @@ def _parse_timestamp(value: Any, index: int) -> int:
         raise ValueError(f"Webull bar row {index} field 'time' is invalid")
     if isinstance(value, int):
         timestamp_ms = value
-    elif isinstance(value, str) and value.isdigit():
+    elif isinstance(value, str) and value.isascii() and value.isdecimal():
         timestamp_ms = int(value)
     else:
         raise ValueError(f"Webull bar row {index} field 'time' is invalid")
@@ -123,7 +123,7 @@ def _parse_volume(value: Any, index: int) -> int:
         raise ValueError(f"Webull bar row {index} field 'volume' is invalid")
     if isinstance(value, int):
         volume = value
-    elif isinstance(value, str) and value.isdigit():
+    elif isinstance(value, str) and value.isascii() and value.isdecimal():
         volume = int(value)
     else:
         raise ValueError(f"Webull bar row {index} field 'volume' is invalid")
