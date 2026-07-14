@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 REQUIRED_FILES = [
@@ -87,9 +88,9 @@ def test_manual_live_smoke_is_read_only_and_uploads_only_manifest():
     assert "default: AAPL" in workflow
     assert "permissions:\n  contents: read" in workflow
     assert "timeout-minutes:" in workflow
-    assert "actions/checkout@v4" in workflow
-    assert "actions/setup-python@v5" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/checkout@" in workflow
+    assert "actions/setup-python@" in workflow
+    assert "actions/upload-artifact@" in workflow
     assert "TICKER: ${{ inputs.ticker }}" in workflow
     assert workflow.count("${{ inputs.ticker }}") == 1
     assert 'run: webull-lab company-data "$TICKER"' in workflow
@@ -103,3 +104,49 @@ def test_manual_live_smoke_is_read_only_and_uploads_only_manifest():
     assert "printenv" not in workflow.lower()
     assert "env |" not in workflow.lower()
     assert "outputs/live-smoke/raw" not in workflow
+
+
+def test_manual_live_smoke_pins_actions_and_hashed_runtime_lock():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (
+        root / ".github" / "workflows" / "sec-webull-live-smoke.yml"
+    ).read_text(encoding="utf-8")
+    action_uses = re.findall(r"uses: (actions/[^@\s]+)@([^\s]+)\s+#\s+(v[^\s]+)", workflow)
+
+    assert action_uses == [
+        (
+            "actions/checkout",
+            "34e114876b0b11c390a56381ad16ebd13914f8d5",
+            "v4.3.1",
+        ),
+        (
+            "actions/setup-python",
+            "a26af69be951a213d495a4c3e4e4022e16d87065",
+            "v5.6.0",
+        ),
+        (
+            "actions/upload-artifact",
+            "ea165f8d65b6e75b540449e92b4886f43607fa02",
+            "v4.6.2",
+        ),
+    ]
+    assert all(re.fullmatch(r"[0-9a-f]{40}", sha) for _, sha, _ in action_uses)
+    assert "persist-credentials: false" in workflow
+    assert "https://github.com/actions/checkout/releases/tag/v4.3.1" in workflow
+    assert "https://github.com/actions/setup-python/releases/tag/v5.6.0" in workflow
+    assert "https://github.com/actions/upload-artifact/releases/tag/v4.6.2" in workflow
+    assert "--require-hashes" in workflow
+    assert ".github/requirements/sec-webull-live-smoke.txt" in workflow
+    assert "pip install -e" not in workflow
+
+    lock = (
+        root / ".github" / "requirements" / "sec-webull-live-smoke.txt"
+    ).read_text(encoding="utf-8")
+    assert "--hash=sha256:" in lock
+    assert "-e " not in lock
+    assert not any(operator in lock for operator in (">=", "<=", "~=", "!="))
+    requirement_starts = [
+        line for line in lock.splitlines() if line and not line.startswith((" ", "#"))
+    ]
+    assert requirement_starts
+    assert all("==" in line for line in requirement_starts)

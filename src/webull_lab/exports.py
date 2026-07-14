@@ -228,7 +228,7 @@ def _canonical_table(frame: pd.DataFrame, schema: pa.Schema, name: str) -> pa.Ta
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
-def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
     serialized = json.dumps(
         payload,
         ensure_ascii=False,
@@ -236,7 +236,22 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         sort_keys=True,
     ) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(serialized, encoding="utf-8")
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(serialized)
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def _write_table(table: pa.Table, output_dir: Path, name: str) -> None:
@@ -364,12 +379,12 @@ def write_company_artifacts(
             _write_table(canonical_statements[name], staging_dir, name)
         _write_table(canonical_prices, staging_dir, "prices")
         _write_table(canonical_metrics, staging_dir, "financial_metrics")
-        _write_json(
+        write_json_atomic(
             staging_dir / "company_snapshot.json",
             {"ticker": ticker, "cik": cik, "webull_status": webull_status},
         )
         for name in sorted(validated_raw):
-            _write_json(staging_dir / "raw" / f"{name}.json", validated_raw[name])
-        _write_json(staging_dir / "run_manifest.json", manifest)
+            write_json_atomic(staging_dir / "raw" / f"{name}.json", validated_raw[name])
+        write_json_atomic(staging_dir / "run_manifest.json", manifest)
         _publish_staged_run(staging_dir, directory, files)
     return manifest

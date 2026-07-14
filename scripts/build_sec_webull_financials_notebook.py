@@ -51,14 +51,14 @@ def build_notebook() -> dict:
             # SEC EDGAR + Webull Financial Data for Beginners
 
             Tutorial ภาษาไทยแบบ offline-first สำหรับสร้างงบการเงิน AAPL จาก SEC EDGAR,
-            เติม daily prices จาก Webull, คำนวณ timing-safe metrics และ export ชุดข้อมูลที่
-            ตรวจสอบย้อนกลับได้ โดยไม่กล่าวอ้างว่าสามารถทำนายราคาได้
+            เติม daily prices จาก Webull, คำนวณ metrics ด้วย filed-date alignment และ export
+            ชุดข้อมูลที่ตรวจสอบย้อนกลับได้ โดยไม่กล่าวอ้างว่าสามารถทำนายราคาได้
 
             ## กลุ่มผู้เรียน
 
             ผู้เริ่มต้น Python/Pandas ที่ต้องการต่อยอดไปสู่งาน equity research หรือ
             quantitative research และต้องการเข้าใจความต่างระหว่างข้อมูล ณ `period end`
-            กับวันที่ข้อมูลพร้อมใช้จริง (`filed date`)
+            กับวันที่ยื่นข้อมูล (`filed date`) รวมถึงข้อจำกัดของ daily date ที่ไม่มีเวลารับ filing
 
             ## สิ่งที่ต้องเตรียม
 
@@ -73,7 +73,8 @@ def build_notebook() -> dict:
             1. แปลง ticker เป็น CIK 10 หลัก
             2. แยก annual, quarterly และ YTD facts พร้อม provenance
             3. normalize Webull OHLCV ให้เป็น canonical schema
-            4. ใช้ `filed_date` จับคู่ราคาเพื่อลด look-ahead bias
+            4. ใช้ `filed_date` จับคู่ราคาเชิงระบบเพื่อลด look-ahead bias และใช้ next trading
+               session เป็น conservative research availability เมื่อไม่มี acceptance timestamp
             5. สร้างกราฟและ export artifacts ที่ audit ได้
 
             ## ลำดับบทเรียน
@@ -86,7 +87,9 @@ def build_notebook() -> dict:
             - **CIK** คือรหัสบริษัทของ SEC; ต้องรักษาเลขศูนย์ด้านหน้า
             - **Provenance** คือข้อมูลที่บอก source taxonomy, XBRL tag, unit, form,
               accession number และ filed date
-            - **Timing safety** หมายถึงไม่ใช้ข้อมูลงบก่อนวันที่ตลาดมีโอกาสรับรู้
+            - **Timing discipline** ใน pipeline คือ align ราคา on/after `filed_date`; daily date
+              ไม่มี acceptance timestamp จึงยังพิสูจน์ same-day availability ไม่ได้ งานวิจัยควร
+              default เป็น next trading session เว้นแต่มี timezone และ market-session logic รองรับ
             - Webull เป็น optional enrichment; ความล้มเหลวของราคาไม่ควรทำให้งบ SEC หาย
 
             ## Workflow
@@ -112,7 +115,6 @@ def build_notebook() -> dict:
         ),
         code(
             """
-            import json
             import os
             from pathlib import Path
 
@@ -125,6 +127,7 @@ def build_notebook() -> dict:
             from webull_lab.account import ResponseError
             from webull_lab.cli import PartialWebullCredentialsError, build_optional_data_client
             from webull_lab.company_pipeline import run_company_pipeline
+            from webull_lab.exports import write_json_atomic
             from webull_lab.financials import build_financial_statements
             from webull_lab.market_data import get_daily_stock_bars, normalize_stock_bars
             from webull_lab.metrics import build_financial_metrics
@@ -253,9 +256,12 @@ def build_notebook() -> dict:
             """
             ## Step 5 - Metrics
 
-            Metrics ใช้ annual facts และราคาวันซื้อขายแรกตั้งแต่ `filed_date` เป็นต้นไป.
-            ค่า `status` สำคัญเท่ากับ `value` เพราะบอกว่า input ขาด, unit ไม่เข้ากัน
-            หรือ denominator ไม่ meaningful.
+            Metrics ใน pipeline ใช้ annual facts และราคาวันซื้อขายแรก on/after `filed_date`
+            เป็น operational alignment. วิธีนี้ลด look-ahead เมื่อเทียบกับ period end แต่ daily
+            date ไม่มี acceptance timestamp จึงไม่ใช่หลักฐานว่า same-day price พร้อมใช้จริง.
+            งานวิจัยแบบ conservative ควรเลื่อนไป next trading session เว้นแต่มี timezone และ
+            market-session logic รองรับ. ค่า `status` สำคัญเท่ากับ `value` เพราะบอกว่า input ขาด,
+            unit ไม่เข้ากัน หรือ denominator ไม่ meaningful.
             """
         ),
         explanation(
@@ -358,10 +364,7 @@ def build_notebook() -> dict:
             manifest["notebook_artifacts"] = [chart_path.name]
             manifest["files"] = sorted({*manifest["files"], chart_path.name})
             manifest_path = OUTPUT_DIR / "run_manifest.json"
-            manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\\n",
-                encoding="utf-8",
-            )
+            write_json_atomic(manifest_path, manifest)
             export_summary = {
                 "ticker": manifest["ticker"],
                 "sec_status": manifest["sec_status"],
@@ -381,7 +384,8 @@ def build_notebook() -> dict:
             ## Common Mistakes
 
             - สลับ annual, quarterly และ YTD หรือรวมคนละ unit
-            - ใช้ `period end` แทน `filed date` จนเกิด look-ahead bias
+            - ใช้ `period end` แทน `filed date` หรือถือว่า daily filed date พิสูจน์ same-day
+              availability โดยไม่มี acceptance timestamp, timezone และ market-session logic
             - เติม missing XBRL fact เป็นศูนย์ หรือใช้ metric โดยไม่ตรวจ status
             - สรุปจากกราฟว่าปัจจัยหนึ่งทำให้อีกปัจจัยเปลี่ยนโดยไม่มีการทดสอบ
             - เทียบ forward-adjusted price กับ historical per-share facts โดยไม่ตรวจ corporate actions
@@ -391,8 +395,9 @@ def build_notebook() -> dict:
 
             เลือก annual revenue และ net income สองปีล่าสุด แล้วสร้างตารางที่มี
             `fiscal_year`, `canonical_metric`, `value`, `unit`, `filed_date`.
-            จากนั้นเขียน 2–3 ประโยคว่า facts ใด “พร้อมใช้” เมื่อใด และเพราะเหตุใด
-            เราจึงยังสรุปการทำนายผลตอบแทนจากตารางนี้ไม่ได้.
+            จากนั้นเขียน 2–3 ประโยคว่า pipeline align ราคาอย่างไร และทำไมงานวิจัยควรใช้
+            next trading session เป็น conservative availability เมื่อไม่มีเวลารับ filing พร้อม
+            อธิบายว่าเหตุใดเราจึงยังสรุปการทำนายผลตอบแทนจากตารางนี้ไม่ได้.
             """
         ),
         explanation(
@@ -419,8 +424,9 @@ def build_notebook() -> dict:
             """
         ),
         interpretation(
-            "เฉลยตั้งต้นควรระบุว่าข้อมูลพร้อมใช้ไม่ก่อน `filed_date`; ความสัมพันธ์กับราคา "
-            "ต้องทดสอบ out-of-sample พร้อม transaction costs และไม่รับประกันผลตอบแทน."
+            "เฉลยตั้งต้นควรแยก operational on/after-filed-date alignment ออกจาก conservative "
+            "next-session availability; ความสัมพันธ์กับราคาต้องทดสอบ out-of-sample พร้อม "
+            "transaction costs และไม่รับประกันผลตอบแทน."
         ),
         markdown(
             """
@@ -428,7 +434,7 @@ def build_notebook() -> dict:
 
             - [ ] CIK มี 10 หลักและตรงกับ ticker
             - [ ] ตรวจ source tag, unit, form, accession และ period type
-            - [ ] ใช้ filed date/available date และตรวจ metric status
+            - [ ] แยก on/after filed-date alignment จาก next-session research availability
             - [ ] เปิด chart ได้ offline และไม่มี external CDN dependency
             - [ ] manifest ระบุ source status และ artifacts ครบ
             - [ ] รันจากบนลงล่างได้โดยไม่มี hidden state
@@ -437,8 +443,10 @@ def build_notebook() -> dict:
             ## นำไปใช้กับงานจริง
 
             เปลี่ยนเป็น live modeเฉพาะเมื่อพร้อม แล้วเก็บ SEC cache/output ในพื้นที่ private.
-            สำหรับ backtest ให้สร้าง point-in-time dataset จาก `filed_date`, แยก train/test,
-            ตรวจ data leakage, survivorship bias, restatements, transaction costs และ risk controls.
+            สำหรับ backtest ให้สร้าง point-in-time dataset โดย default availability เป็น next
+            trading session หลัง `filed_date`; same-day ต้องมี acceptance timestamp, timezone และ
+            market-session logic จากนั้นแยก train/test และตรวจ data leakage, survivorship bias,
+            restatements, transaction costs และ risk controls.
             ผลลัพธ์นี้เป็น research input ไม่ใช่คำรับรองราคา/ผลตอบแทน.
 
             ### Optional Extension

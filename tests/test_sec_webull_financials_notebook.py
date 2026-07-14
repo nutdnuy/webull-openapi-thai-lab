@@ -372,6 +372,18 @@ def test_notebook_documents_forward_adjusted_webull_prices():
     assert "ปรับย้อนหลัง" in text
 
 
+def test_notebook_uses_atomic_manifest_update_and_conservative_price_timing():
+    text = "\n".join(source(cell) for cell in load()["cells"])
+
+    assert "write_json_atomic" in text
+    assert "manifest_path.write_text" not in text
+    assert "next trading session" in text
+    assert "acceptance timestamp" in text
+    assert "market-session" in text
+    assert "timing-safe metrics" not in text
+    assert "ข้อมูลพร้อมใช้ไม่ก่อน `filed_date`" not in text
+
+
 def test_builder_source_and_notebook_do_not_contain_embedded_secrets():
     texts = [BUILDER.read_text(encoding="utf-8"), NOTEBOOK.read_text(encoding="utf-8")]
     forbidden_values = [

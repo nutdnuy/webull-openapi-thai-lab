@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from webull_lab.exports import write_company_artifacts
+from webull_lab.exports import write_company_artifacts, write_json_atomic
 from webull_lab.financials import OUTPUT_COLUMNS, build_financial_statements
 from webull_lab.market_data import BAR_COLUMNS, normalize_stock_bars
 from webull_lab.metrics import METRIC_COLUMNS, build_financial_metrics
@@ -650,3 +650,25 @@ def test_write_company_artifacts_rejects_raw_name_path_traversal(tmp_path, raw_n
         )
 
     assert not (tmp_path / "run_manifest.json").exists()
+
+
+def test_atomic_json_update_preserves_old_file_and_cleans_temp_on_replace_failure(
+    tmp_path, monkeypatch
+):
+    manifest_path = tmp_path / "run_manifest.json"
+    original = '{"status":"old"}\n'
+    manifest_path.write_text(original, encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_manifest_replace(source, target):
+        if Path(target) == manifest_path:
+            raise OSError("injected atomic replace failure")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", fail_manifest_replace)
+
+    with pytest.raises(OSError, match="injected atomic replace failure"):
+        write_json_atomic(manifest_path, {"status": "new"})
+
+    assert manifest_path.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob(".run_manifest.json.*.tmp")) == []
