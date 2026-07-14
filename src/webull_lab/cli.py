@@ -153,7 +153,7 @@ def company_data(
             sec_client,
             build_optional_data_client(),
         )
-        console.print(json.dumps(manifest, ensure_ascii=False, indent=2))
+        typer.echo(json.dumps(manifest, ensure_ascii=False, indent=2))
     except (ResponseError, SecDataError, RuntimeError, ValueError, OSError) as error:
         print_company_data_error_and_exit(error)
 

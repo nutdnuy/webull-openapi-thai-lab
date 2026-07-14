@@ -486,3 +486,19 @@ def test_company_data_does_not_downgrade_unexpected_client_build_errors(
     assert pipeline_calls == []
     assert marker_secret not in result.output
     assert "Traceback" not in result.output
+
+
+def test_company_data_manifest_json_does_not_wrap_long_warning(monkeypatch, tmp_path):
+    prepare_company_data_env(monkeypatch, tmp_path)
+    manifest = {
+        "ticker": "AAPL",
+        "webull_status": "unavailable",
+        "warnings": [SAFE_WEBULL_WARNING],
+    }
+    monkeypatch.setattr(cli_module, "SecClient", lambda settings: object())
+    monkeypatch.setattr(cli_module, "run_company_pipeline", lambda *args: manifest)
+
+    result = CliRunner().invoke(app, ["company-data"], terminal_width=40)
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == manifest
