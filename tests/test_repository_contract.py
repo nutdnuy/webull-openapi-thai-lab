@@ -90,7 +90,11 @@ def test_manual_live_smoke_is_read_only_and_uploads_only_manifest():
     assert "actions/checkout@v4" in workflow
     assert "actions/setup-python@v5" in workflow
     assert "actions/upload-artifact@v4" in workflow
-    assert 'webull-lab company-data "${{ inputs.ticker }}"' in workflow
+    assert "TICKER: ${{ inputs.ticker }}" in workflow
+    assert workflow.count("${{ inputs.ticker }}") == 1
+    assert 'run: webull-lab company-data "$TICKER"' in workflow
+    run_lines = [line for line in workflow.splitlines() if line.lstrip().startswith("run:")]
+    assert all("${{ inputs.ticker }}" not in line for line in run_lines)
     assert "path: outputs/live-smoke/run_manifest.json" in workflow
     assert "pull_request:" not in workflow
     assert "push:" not in workflow

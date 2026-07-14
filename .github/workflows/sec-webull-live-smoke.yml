@@ -29,10 +29,11 @@ jobs:
 
       - name: Run live read-only company data pipeline
         env:
+          TICKER: ${{ inputs.ticker }}
           SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
           WEBULL_APP_KEY: ${{ secrets.WEBULL_APP_KEY }}
           WEBULL_APP_SECRET: ${{ secrets.WEBULL_APP_SECRET }}
-        run: webull-lab company-data "${{ inputs.ticker }}" --years 5 --output-dir outputs/live-smoke
+        run: webull-lab company-data "$TICKER" --years 5 --output-dir outputs/live-smoke
 
       - name: Upload manifest
         uses: actions/upload-artifact@v4

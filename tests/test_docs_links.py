@@ -119,6 +119,9 @@ def test_sec_webull_guide_meets_educational_contract():
     assert "ไม่สามารถทำนาย" in guide or "ไม่รับประกัน" in guide
     assert "single-ticker" in guide
     assert "webull-lab company-data AAPL --years 5" in guide
+    assert "next trading session" in guide
+    assert "acceptance timestamp" in guide
+    assert "market-session" in guide
 
 
 def test_documented_local_markdown_links_resolve():
