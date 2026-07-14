@@ -2,14 +2,68 @@ import copy
 import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 from webull_lab.exports import write_company_artifacts
+from webull_lab.financials import OUTPUT_COLUMNS, build_financial_statements
+from webull_lab.market_data import BAR_COLUMNS, normalize_stock_bars
+from webull_lab.metrics import METRIC_COLUMNS, build_financial_metrics
 
 STATEMENT_NAMES = ("income_statement", "balance_sheet", "cash_flow")
+FIXTURE_ROOT = Path("tests/fixtures")
+DECIMAL_SCHEMA = pa.decimal256(76, 30)
+STATEMENT_SCHEMA = pa.schema(
+    [
+        pa.field("ticker", pa.string()),
+        pa.field("cik", pa.string()),
+        pa.field("statement", pa.string()),
+        pa.field("canonical_metric", pa.string()),
+        pa.field("source_taxonomy", pa.string()),
+        pa.field("source_tag", pa.string()),
+        pa.field("value", DECIMAL_SCHEMA),
+        pa.field("unit", pa.string()),
+        pa.field("start_date", pa.date32()),
+        pa.field("end_date", pa.date32()),
+        pa.field("form", pa.string()),
+        pa.field("fiscal_year", pa.int64()),
+        pa.field("fiscal_period", pa.string()),
+        pa.field("filed_date", pa.date32()),
+        pa.field("frame", pa.string()),
+        pa.field("accession_number", pa.string()),
+        pa.field("period_type", pa.string()),
+        pa.field("derived", pa.bool_()),
+        pa.field("superseded_accessions", pa.string()),
+    ]
+)
+PRICE_SCHEMA = pa.schema(
+    [
+        pa.field("symbol", pa.string()),
+        pa.field("date", pa.date32()),
+        pa.field("open", pa.decimal128(20, 8)),
+        pa.field("high", pa.decimal128(20, 8)),
+        pa.field("low", pa.decimal128(20, 8)),
+        pa.field("close", pa.decimal128(20, 8)),
+        pa.field("volume", pa.int64()),
+    ]
+)
+METRIC_SCHEMA = pa.schema(
+    [
+        pa.field("ticker", pa.string()),
+        pa.field("metric", pa.string()),
+        pa.field("value", DECIMAL_SCHEMA),
+        pa.field("status", pa.string()),
+        pa.field("formula", pa.string()),
+        pa.field("current_period", pa.int64()),
+        pa.field("comparison_period", pa.int64()),
+        pa.field("available_date", pa.date32()),
+        pa.field("price_date", pa.date32()),
+    ]
+)
 
 
 def _statements() -> dict[str, pd.DataFrame]:
@@ -142,7 +196,166 @@ def test_write_company_artifacts_exports_empty_tables_without_crashing(tmp_path)
     )
 
     assert len(manifest["files"]) == 12
-    assert pq.read_table(tmp_path / "income_statement.parquet").num_rows == 0
+    assert list(pd.read_csv(tmp_path / "income_statement.csv").columns) == OUTPUT_COLUMNS
+    assert list(pd.read_csv(tmp_path / "prices.csv").columns) == BAR_COLUMNS
+    assert list(pd.read_csv(tmp_path / "financial_metrics.csv").columns) == METRIC_COLUMNS
+    assert pq.read_schema(tmp_path / "income_statement.parquet").remove_metadata() == (
+        STATEMENT_SCHEMA
+    )
+    assert pq.read_schema(tmp_path / "prices.parquet").remove_metadata() == PRICE_SCHEMA
+    assert pq.read_schema(tmp_path / "financial_metrics.parquet").remove_metadata() == (
+        METRIC_SCHEMA
+    )
+
+
+def test_empty_and_minimal_tables_export_canonical_csv_headers_and_parquet_schemas(
+    tmp_path,
+):
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        _statements(),
+        _prices(),
+        _metrics(),
+        "available",
+    )
+
+    assert list(pd.read_csv(tmp_path / "income_statement.csv").columns) == OUTPUT_COLUMNS
+    assert list(pd.read_csv(tmp_path / "prices.csv").columns) == BAR_COLUMNS
+    assert list(pd.read_csv(tmp_path / "financial_metrics.csv").columns) == METRIC_COLUMNS
+    assert pq.read_schema(tmp_path / "income_statement.parquet").remove_metadata() == (
+        STATEMENT_SCHEMA
+    )
+    assert pq.read_schema(tmp_path / "prices.parquet").remove_metadata() == PRICE_SCHEMA
+    assert pq.read_schema(tmp_path / "financial_metrics.parquet").remove_metadata() == (
+        METRIC_SCHEMA
+    )
+
+    empty_dir = tmp_path / "empty"
+    write_company_artifacts(
+        empty_dir,
+        "AAPL",
+        "0000320193",
+        {name: pd.DataFrame(columns=OUTPUT_COLUMNS, dtype="object") for name in STATEMENT_NAMES},
+        normalize_stock_bars([]),
+        pd.DataFrame(columns=METRIC_COLUMNS, dtype="object"),
+        "unavailable",
+    )
+
+    assert pq.read_schema(empty_dir / "income_statement.parquet").remove_metadata() == (
+        STATEMENT_SCHEMA
+    )
+    assert pq.read_schema(empty_dir / "prices.parquet").remove_metadata() == PRICE_SCHEMA
+    assert pq.read_schema(empty_dir / "financial_metrics.parquet").remove_metadata() == (
+        METRIC_SCHEMA
+    )
+
+
+def test_real_financial_metric_and_price_outputs_use_canonical_export_schemas(tmp_path):
+    companyfacts = json.loads(
+        (FIXTURE_ROOT / "sec" / "aapl_companyfacts_sample.json").read_text()
+    )
+    bar_payload = json.loads(
+        (FIXTURE_ROOT / "webull" / "aapl_daily_bars_sample.json").read_text()
+    )
+    statements = build_financial_statements("AAPL", "320193", companyfacts, years=5)
+    prices = normalize_stock_bars(bar_payload)
+    metrics = build_financial_metrics(statements, prices)
+
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        statements,
+        prices,
+        metrics,
+        "available",
+    )
+
+    for name in STATEMENT_NAMES:
+        assert pq.read_schema(tmp_path / f"{name}.parquet").remove_metadata() == (
+            STATEMENT_SCHEMA
+        )
+    assert pq.read_schema(tmp_path / "prices.parquet").remove_metadata() == PRICE_SCHEMA
+    assert pq.read_schema(tmp_path / "financial_metrics.parquet").remove_metadata() == (
+        METRIC_SCHEMA
+    )
+
+
+def test_staging_failure_leaves_previous_run_artifacts_untouched(tmp_path):
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        _statements(),
+        _prices(),
+        _metrics(),
+        "available",
+        raw_payloads={"sec_companyfacts": {"facts": {}}},
+    )
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+
+    with pytest.raises(TypeError):
+        write_company_artifacts(
+            tmp_path,
+            "MSFT",
+            "0000789019",
+            _statements(),
+            _prices(),
+            _metrics(),
+            "available",
+            raw_payloads={"bad_payload": {"not_json": {1, 2}}},
+        )
+
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+    assert json.loads((tmp_path / "run_manifest.json").read_text())["ticker"] == "AAPL"
+
+
+def test_publish_failure_invalidates_manifest(tmp_path, monkeypatch):
+    write_company_artifacts(
+        tmp_path,
+        "AAPL",
+        "0000320193",
+        _statements(),
+        _prices(),
+        _metrics(),
+        "available",
+    )
+    publish_calls = 0
+
+    def fail_during_publish(source, target):
+        nonlocal publish_calls
+        publish_calls += 1
+        if publish_calls == 2:
+            raise OSError("simulated publish failure")
+        source.replace(target)
+
+    monkeypatch.setattr(
+        "webull_lab.exports._publish_staged_file", fail_during_publish, raising=False
+    )
+
+    with pytest.raises(OSError, match="simulated publish failure"):
+        write_company_artifacts(
+            tmp_path,
+            "MSFT",
+            "0000789019",
+            _statements(),
+            _prices(),
+            _metrics(),
+            "available",
+        )
+
+    assert not (tmp_path / "run_manifest.json").exists()
 
 
 def test_write_company_artifacts_does_not_mutate_inputs_and_copies_warnings(tmp_path):

@@ -1,19 +1,72 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import tempfile
-from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Mapping, Sequence
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from webull_lab.financials import OUTPUT_COLUMNS
+from webull_lab.market_data import BAR_COLUMNS
+from webull_lab.metrics import METRIC_COLUMNS
 
 STATEMENT_NAMES = ("income_statement", "balance_sheet", "cash_flow")
 WEBULL_STATUSES = frozenset({"available", "unavailable"})
 CACHE_STATUSES = frozenset({"hit", "miss", "unknown"})
 _RAW_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_DECIMAL_TYPE = pa.decimal256(76, 30)
+_PRICE_DECIMAL_TYPE = pa.decimal128(20, 8)
+
+
+def _schema(
+    columns: list[str], type_overrides: Mapping[str, pa.DataType]
+) -> pa.Schema:
+    return pa.schema(
+        [pa.field(column, type_overrides.get(column, pa.string())) for column in columns]
+    )
+
+
+STATEMENT_SCHEMA = _schema(
+    OUTPUT_COLUMNS,
+    {
+        "value": _DECIMAL_TYPE,
+        "start_date": pa.date32(),
+        "end_date": pa.date32(),
+        "fiscal_year": pa.int64(),
+        "filed_date": pa.date32(),
+        "derived": pa.bool_(),
+    },
+)
+PRICE_SCHEMA = _schema(
+    BAR_COLUMNS,
+    {
+        "date": pa.date32(),
+        "open": _PRICE_DECIMAL_TYPE,
+        "high": _PRICE_DECIMAL_TYPE,
+        "low": _PRICE_DECIMAL_TYPE,
+        "close": _PRICE_DECIMAL_TYPE,
+        "volume": pa.int64(),
+    },
+)
+METRIC_SCHEMA = _schema(
+    METRIC_COLUMNS,
+    {
+        "value": _DECIMAL_TYPE,
+        "current_period": pa.int64(),
+        "comparison_period": pa.int64(),
+        "available_date": pa.date32(),
+        "price_date": pa.date32(),
+    },
+)
 
 
 def _validate_inputs(
@@ -75,18 +128,89 @@ def _validate_inputs(
     return sanitized_warnings, validated_raw
 
 
-def _atomic_write(path: Path, writer: Callable[[Path], None]) -> None:
-    temporary_path: Path | None = None
-    replaced = False
+def _is_null(value: object) -> bool:
+    return value is None or value is pd.NA or value is pd.NaT
+
+
+def _as_string(value: object) -> str | None:
+    if _is_null(value):
+        return None
+    if not isinstance(value, str):
+        raise ValueError("string field is invalid")
+    return value
+
+
+def _as_date(value: object) -> date | None:
+    if _is_null(value):
+        return None
+    if type(value) is date:
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            pass
+    raise ValueError("date field is invalid")
+
+
+def _as_int(value: object) -> int | None:
+    if _is_null(value):
+        return None
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError("integer field is invalid")
+    return int(value)
+
+
+def _as_bool(value: object) -> bool | None:
+    if _is_null(value):
+        return None
+    if not isinstance(value, bool):
+        raise ValueError("boolean field is invalid")
+    return value
+
+
+def _as_decimal(value: object) -> Decimal | None:
+    if _is_null(value):
+        return None
+    if isinstance(value, bool) or not isinstance(value, Decimal | int | float | str):
+        raise ValueError("decimal field is invalid")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("decimal field is invalid")
     try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
-            temporary_path = Path(temporary.name)
-        writer(temporary_path)
-        temporary_path.replace(path)
-        replaced = True
-    finally:
-        if temporary_path is not None and not replaced:
-            temporary_path.unlink(missing_ok=True)
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError("decimal field is invalid") from None
+    if not parsed.is_finite():
+        raise ValueError("decimal field is invalid")
+    return parsed
+
+
+def _converter(data_type: pa.DataType):
+    if pa.types.is_string(data_type):
+        return _as_string
+    if pa.types.is_date32(data_type):
+        return _as_date
+    if pa.types.is_int64(data_type):
+        return _as_int
+    if pa.types.is_boolean(data_type):
+        return _as_bool
+    if pa.types.is_decimal(data_type):
+        return _as_decimal
+    raise RuntimeError("unsupported artifact field type")
+
+
+def _canonical_table(frame: pd.DataFrame, schema: pa.Schema, name: str) -> pa.Table:
+    if not frame.columns.is_unique or not set(frame.columns).issubset(schema.names):
+        raise ValueError(f"{name} table columns are invalid")
+    arrays: list[pa.Array] = []
+    for field in schema:
+        values = frame[field.name].tolist() if field.name in frame else [None] * len(frame)
+        try:
+            converted = [_converter(field.type)(value) for value in values]
+            arrays.append(pa.array(converted, type=field.type))
+        except (ValueError, TypeError, OverflowError, pa.ArrowException):
+            raise ValueError(f"{name} table field {field.name!r} is invalid") from None
+    return pa.Table.from_arrays(arrays, schema=schema)
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -96,15 +220,15 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         indent=2,
         sort_keys=True,
     ) + "\n"
-    _atomic_write(path, lambda temporary: temporary.write_text(serialized, encoding="utf-8"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(serialized, encoding="utf-8")
 
 
-def _write_table(frame: pd.DataFrame, output_dir: Path, name: str) -> list[str]:
+def _write_table(table: pa.Table, output_dir: Path, name: str) -> None:
     csv_path = output_dir / f"{name}.csv"
     parquet_path = output_dir / f"{name}.parquet"
-    _atomic_write(csv_path, lambda temporary: frame.to_csv(temporary, index=False))
-    _atomic_write(parquet_path, lambda temporary: frame.to_parquet(temporary, index=False))
-    return [csv_path.name, parquet_path.name]
+    table.to_pandas().to_csv(csv_path, index=False)
+    pq.write_table(table, parquet_path)
 
 
 def _missing_metrics(metrics: pd.DataFrame) -> list[str]:
@@ -116,15 +240,41 @@ def _missing_metrics(metrics: pd.DataFrame) -> list[str]:
     return sorted({metric.strip() for metric in missing})
 
 
-def _remove_stale_raw_json(raw_dir: Path) -> None:
-    if raw_dir.is_symlink():
+def _validate_publish_destination(directory: Path) -> None:
+    if directory.exists() and not directory.is_dir():
+        raise ValueError("output directory is invalid")
+    raw_dir = directory / "raw"
+    if raw_dir.is_symlink() or (raw_dir.exists() and not raw_dir.is_dir()):
         raise ValueError("raw output directory is invalid")
-    if not raw_dir.exists():
-        return
-    if not raw_dir.is_dir():
-        raise ValueError("raw output directory is invalid")
-    for path in raw_dir.glob("*.json"):
-        path.unlink()
+
+
+def _publish_staged_file(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source.replace(target)
+
+
+def _publish_staged_run(staging_dir: Path, directory: Path, files: list[str]) -> None:
+    _validate_publish_destination(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    manifest_path = directory / "run_manifest.json"
+    manifest_path.unlink(missing_ok=True)
+
+    for relative in files:
+        if relative == "run_manifest.json":
+            continue
+        _publish_staged_file(staging_dir / relative, directory / relative)
+
+    expected_raw = {relative for relative in files if relative.startswith("raw/")}
+    raw_dir = directory / "raw"
+    if raw_dir.exists():
+        for path in raw_dir.glob("*.json"):
+            relative = path.relative_to(directory).as_posix()
+            if relative not in expected_raw:
+                path.unlink()
+        if not any(raw_dir.iterdir()):
+            raw_dir.rmdir()
+
+    _publish_staged_file(staging_dir / "run_manifest.json", manifest_path)
 
 
 def write_company_artifacts(
@@ -152,33 +302,32 @@ def write_company_artifacts(
         raw_payloads,
         cache_status,
     )
+    canonical_statements = {
+        name: _canonical_table(statements[name], STATEMENT_SCHEMA, name)
+        for name in STATEMENT_NAMES
+    }
+    canonical_prices = _canonical_table(prices, PRICE_SCHEMA, "prices")
+    canonical_metrics = _canonical_table(metrics, METRIC_SCHEMA, "financial_metrics")
     missing_metrics = _missing_metrics(metrics)
     directory = Path(output_dir)
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.parent.mkdir(parents=True, exist_ok=True)
 
-    files: list[str] = []
-    for name in STATEMENT_NAMES:
-        files.extend(_write_table(statements[name], directory, name))
-    files.extend(_write_table(prices, directory, "prices"))
-    files.extend(_write_table(metrics, directory, "financial_metrics"))
-
-    snapshot = {"ticker": ticker, "cik": cik, "webull_status": webull_status}
-    snapshot_path = directory / "company_snapshot.json"
-    _write_json(snapshot_path, snapshot)
-    files.append(snapshot_path.name)
-
-    raw_dir = directory / "raw"
-    _remove_stale_raw_json(raw_dir)
-    if validated_raw:
-        raw_dir.mkdir(exist_ok=True)
-        for name in sorted(validated_raw):
-            raw_path = raw_dir / f"{name}.json"
-            _write_json(raw_path, validated_raw[name])
-            files.append(raw_path.relative_to(directory).as_posix())
-    elif raw_dir.exists() and not any(raw_dir.iterdir()):
-        raw_dir.rmdir()
-
-    files.append("run_manifest.json")
+    files = sorted(
+        [
+            *(
+                f"{name}.{extension}"
+                for name in STATEMENT_NAMES
+                for extension in ("csv", "parquet")
+            ),
+            "prices.csv",
+            "prices.parquet",
+            "financial_metrics.csv",
+            "financial_metrics.parquet",
+            "company_snapshot.json",
+            *(f"raw/{name}.json" for name in sorted(validated_raw)),
+            "run_manifest.json",
+        ]
+    )
     manifest = {
         "ticker": ticker,
         "cik": cik,
@@ -189,7 +338,23 @@ def write_company_artifacts(
         "cache_status": cache_status,
         "warnings": sanitized_warnings,
         "missing_metrics": missing_metrics,
-        "files": sorted(files),
+        "files": files,
     }
-    _write_json(directory / "run_manifest.json", manifest)
+
+    with tempfile.TemporaryDirectory(
+        prefix=".company-artifacts-", dir=directory.parent
+    ) as temporary:
+        staging_dir = Path(temporary)
+        for name in STATEMENT_NAMES:
+            _write_table(canonical_statements[name], staging_dir, name)
+        _write_table(canonical_prices, staging_dir, "prices")
+        _write_table(canonical_metrics, staging_dir, "financial_metrics")
+        _write_json(
+            staging_dir / "company_snapshot.json",
+            {"ticker": ticker, "cik": cik, "webull_status": webull_status},
+        )
+        for name in sorted(validated_raw):
+            _write_json(staging_dir / "raw" / f"{name}.json", validated_raw[name])
+        _write_json(staging_dir / "run_manifest.json", manifest)
+        _publish_staged_run(staging_dir, directory, files)
     return manifest

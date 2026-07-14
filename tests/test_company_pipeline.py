@@ -16,8 +16,9 @@ SAFE_WEBULL_WARNING = (
 
 
 class FakeSecClient:
-    def __init__(self, *, cache_hits=0):
+    def __init__(self, *, cache_hits=0, cache_hit_increment=0):
         self.cache_hits = cache_hits
+        self.cache_hit_increment = cache_hit_increment
         self.calls = []
         self.submissions = {"name": "Apple Inc.", "filings": {}}
         self.companyfacts = {"cik": 320193, "facts": {"us-gaap": {}}}
@@ -32,6 +33,8 @@ class FakeSecClient:
 
     def get_companyfacts(self, cik):
         self.calls.append(("get_companyfacts", cik))
+        if hasattr(self, "cache_hits"):
+            self.cache_hits += self.cache_hit_increment
         return self.companyfacts
 
 
@@ -61,7 +64,7 @@ def test_pipeline_completes_sec_only_when_webull_is_absent(tmp_path):
 def test_pipeline_successfully_normalizes_webull_bars_and_computes_metrics(
     tmp_path, monkeypatch
 ):
-    sec_client = FakeSecClient(cache_hits=2)
+    sec_client = FakeSecClient(cache_hits=2, cache_hit_increment=1)
     raw_bars = [
         {
             "symbol": "AAPL",
@@ -97,6 +100,23 @@ def test_pipeline_successfully_normalizes_webull_bars_and_computes_metrics(
     assert json.loads((tmp_path / "run_manifest.json").read_text())["years"] == 3
 
 
+def test_pipeline_ignores_stale_cache_hits_from_prior_runs(tmp_path):
+    result = run_company_pipeline(
+        "AAPL", 5, tmp_path, FakeSecClient(cache_hits=4), data_client=None
+    )
+
+    assert result["cache_status"] == "miss"
+
+
+def test_pipeline_reports_unknown_cache_status_without_valid_client_signal(tmp_path):
+    client = FakeSecClient()
+    del client.cache_hits
+
+    result = run_company_pipeline("AAPL", 5, tmp_path, client, data_client=None)
+
+    assert result["cache_status"] == "unknown"
+
+
 @pytest.mark.parametrize("exception_type", [RuntimeError, ValueError])
 def test_pipeline_turns_expected_webull_failure_into_safe_partial_result(
     tmp_path, monkeypatch, exception_type
@@ -113,6 +133,45 @@ def test_pipeline_turns_expected_webull_failure_into_safe_partial_result(
     assert result["warnings"] == [SAFE_WEBULL_WARNING]
     assert secret not in str(result)
     assert secret not in (tmp_path / "run_manifest.json").read_text(encoding="utf-8")
+
+
+def test_pipeline_turns_malformed_webull_payload_into_safe_partial_result(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "webull_lab.company_pipeline.get_daily_stock_bars", lambda *args: {"bad": "shape"}
+    )
+
+    result = run_company_pipeline("AAPL", 5, tmp_path, FakeSecClient(), data_client=object())
+
+    assert result["webull_status"] == "unavailable"
+    assert result["warnings"] == [SAFE_WEBULL_WARNING]
+
+
+def test_pipeline_propagates_unexpected_runtime_error_from_normalization(
+    tmp_path, monkeypatch
+):
+    calls = 0
+
+    def fail_on_fetched_payload(payload):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return pd.DataFrame()
+        raise RuntimeError("normalizer bug")
+
+    monkeypatch.setattr(
+        "webull_lab.company_pipeline.get_daily_stock_bars", lambda *args: [{"raw": "bar"}]
+    )
+    monkeypatch.setattr(
+        "webull_lab.company_pipeline.normalize_stock_bars",
+        fail_on_fetched_payload,
+    )
+
+    with pytest.raises(RuntimeError, match="normalizer bug"):
+        run_company_pipeline("AAPL", 5, tmp_path, FakeSecClient(), data_client=object())
+
+    assert not (tmp_path / "run_manifest.json").exists()
 
 
 def test_pipeline_propagates_sec_failure_without_writing_manifest(tmp_path):

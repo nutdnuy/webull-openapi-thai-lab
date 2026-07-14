@@ -17,6 +17,13 @@ SAFE_WEBULL_WARNING = (
 )
 
 
+def _cache_hits(client: Any) -> int | None:
+    value = getattr(client, "cache_hits", None)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 def _validate_statements(statements: object) -> None:
     if (
         not isinstance(statements, Mapping)
@@ -39,9 +46,18 @@ def run_company_pipeline(
         raise ValueError("years must be a positive integer")
 
     symbol = ticker.strip().upper()
+    cache_hits_before = _cache_hits(sec_client)
     cik = sec_client.resolve_cik(symbol)
     submissions = sec_client.get_submissions(cik)
     companyfacts = sec_client.get_companyfacts(cik)
+    cache_hits_after = _cache_hits(sec_client)
+    cache_status = (
+        "unknown"
+        if cache_hits_before is None or cache_hits_after is None
+        else "hit"
+        if cache_hits_after > cache_hits_before
+        else "miss"
+    )
     statements = build_financial_statements(symbol, cik, companyfacts, years=years)
     _validate_statements(statements)
 
@@ -50,10 +66,16 @@ def run_company_pipeline(
     webull_status = "unavailable"
     if data_client is not None:
         try:
-            prices = normalize_stock_bars(get_daily_stock_bars(data_client, symbol))
-            webull_status = "available"
+            payload = get_daily_stock_bars(data_client, symbol)
         except (ResponseError, RuntimeError, ValueError):
             warnings.append(SAFE_WEBULL_WARNING)
+        else:
+            try:
+                prices = normalize_stock_bars(payload)
+            except ValueError:
+                warnings.append(SAFE_WEBULL_WARNING)
+            else:
+                webull_status = "available"
 
     metrics = build_financial_metrics(statements, prices)
     return write_company_artifacts(
@@ -70,5 +92,5 @@ def run_company_pipeline(
             "sec_submissions": submissions,
             "sec_companyfacts": companyfacts,
         },
-        cache_status="hit" if getattr(sec_client, "cache_hits", 0) else "miss",
+        cache_status=cache_status,
     )
