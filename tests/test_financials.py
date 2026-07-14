@@ -55,6 +55,45 @@ def payload_for(tag: str, observations: list[dict], unit: str = "USD") -> dict:
     return {"facts": {"us-gaap": {tag: {"units": {unit: observations}}}}}
 
 
+def test_canonical_tags_exactly_match_approved_mapping():
+    assert CANONICAL_TAGS == {
+        "income_statement": {
+            "revenue": [
+                "RevenueFromContractWithCustomerExcludingAssessedTax",
+                "Revenues",
+            ],
+            "gross_profit": ["GrossProfit"],
+            "operating_income": ["OperatingIncomeLoss"],
+            "net_income": ["NetIncomeLoss", "ProfitLoss"],
+            "basic_eps": ["EarningsPerShareBasic"],
+            "diluted_eps": ["EarningsPerShareDiluted"],
+        },
+        "balance_sheet": {
+            "cash": [
+                "CashAndCashEquivalentsAtCarryingValue",
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+            ],
+            "current_assets": ["AssetsCurrent"],
+            "total_assets": ["Assets"],
+            "current_liabilities": ["LiabilitiesCurrent"],
+            "total_liabilities": ["Liabilities"],
+            "debt": [
+                "LongTermDebtAndFinanceLeaseObligationsCurrent",
+                "LongTermDebtCurrent",
+                "LongTermDebtNoncurrent",
+            ],
+            "stockholders_equity": ["StockholdersEquity"],
+        },
+        "cash_flow": {
+            "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
+            "capital_expenditure": ["PaymentsToAcquirePropertyPlantAndEquipment"],
+            "investing_cash_flow": ["NetCashProvidedByUsedInInvestingActivities"],
+            "financing_cash_flow": ["NetCashProvidedByUsedInFinancingActivities"],
+            "dividends_paid": ["PaymentsOfDividends"],
+        },
+    }
+
+
 def test_schema_keys_columns_and_fixture_provenance_are_stable(companyfacts):
     result = build_financial_statements(" aapl ", "320193", companyfacts)
 
@@ -119,6 +158,25 @@ def test_quarterly_instant_balance_fact_is_not_ytd():
     row = build_financial_statements("AAPL", "320193", payload)["balance_sheet"].iloc[0]
     assert row["period_type"] == "quarterly"
     assert row["start_date"] is None
+
+
+def test_q4_instant_balance_fact_is_quarterly():
+    payload = payload_for(
+        "Assets",
+        [
+            observation(
+                5600,
+                start=None,
+                fiscal_period="Q4",
+                form="10-Q/A",
+                frame="CY2024Q4I",
+            )
+        ],
+    )
+
+    row = build_financial_statements("AAPL", "320193", payload)["balance_sheet"].iloc[0]
+
+    assert row["period_type"] == "quarterly"
 
 
 def test_candidate_tags_cover_different_periods_and_priority_breaks_filed_date_tie():
@@ -218,6 +276,26 @@ def test_years_filter_keeps_latest_n_fiscal_years_across_statements():
     assert result["balance_sheet"]["fiscal_year"].tolist() == [2024]
 
 
+def test_years_filter_uses_latest_distinct_values_for_sparse_years():
+    payload = payload_for(
+        "NetIncomeLoss",
+        [
+            observation(1, fiscal_year=2020, end="2020-12-31"),
+            observation(2, fiscal_year=2024, end="2024-12-31"),
+        ],
+    )
+
+    latest_two = build_financial_statements("AAPL", "320193", payload, years=2)[
+        "income_statement"
+    ]
+    latest_one = build_financial_statements("AAPL", "320193", payload, years=1)[
+        "income_statement"
+    ]
+
+    assert latest_two["fiscal_year"].tolist() == [2020, 2024]
+    assert latest_one["fiscal_year"].tolist() == [2024]
+
+
 @pytest.mark.parametrize("years", [0, -1, 1.5, "1", True])
 def test_years_rejects_non_positive_non_integer_and_bool(years):
     with pytest.raises(ValueError, match="years"):
@@ -271,6 +349,37 @@ def test_malformed_inputs_raise_safe_error_without_payload_content(ticker, cik, 
         build_financial_statements(ticker, cik, payload)
 
     assert "secret" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("fy", []),
+        ("fy", True),
+        ("fy", float("inf")),
+        ("start", []),
+        ("start", "2024/01/01"),
+        ("end", 20241231),
+        ("end", "2024-13-01"),
+        ("filed", []),
+        ("filed", "2025-02-30"),
+        ("frame", []),
+        ("accn", {}),
+        ("fp", []),
+        ("fp", ""),
+        ("form", []),
+        ("form", ""),
+    ],
+)
+def test_supported_observation_rejects_malformed_metadata_safely(field, value):
+    item = observation(100)
+    item[field] = value
+    payload = payload_for("NetIncomeLoss", [item])
+
+    with pytest.raises(FinancialDataError) as exc_info:
+        build_financial_statements("AAPL", "320193", payload)
+
+    assert repr(value) not in str(exc_info.value)
 
 
 def test_build_does_not_mutate_caller_payload(companyfacts):

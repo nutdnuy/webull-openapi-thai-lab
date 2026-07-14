@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import date
 from numbers import Real
 from typing import Any
 
@@ -17,38 +18,38 @@ class FinancialDataError(ValueError):
 
 CANONICAL_TAGS = {
     "income_statement": {
-        "revenue": (
+        "revenue": [
             "RevenueFromContractWithCustomerExcludingAssessedTax",
             "Revenues",
-        ),
-        "gross_profit": ("GrossProfit",),
-        "operating_income": ("OperatingIncomeLoss",),
-        "net_income": ("NetIncomeLoss", "ProfitLoss"),
-        "basic_eps": ("EarningsPerShareBasic",),
-        "diluted_eps": ("EarningsPerShareDiluted",),
+        ],
+        "gross_profit": ["GrossProfit"],
+        "operating_income": ["OperatingIncomeLoss"],
+        "net_income": ["NetIncomeLoss", "ProfitLoss"],
+        "basic_eps": ["EarningsPerShareBasic"],
+        "diluted_eps": ["EarningsPerShareDiluted"],
     },
     "balance_sheet": {
-        "cash": (
+        "cash": [
             "CashAndCashEquivalentsAtCarryingValue",
             "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
-        ),
-        "current_assets": ("AssetsCurrent",),
-        "total_assets": ("Assets",),
-        "current_liabilities": ("LiabilitiesCurrent",),
-        "total_liabilities": ("Liabilities",),
-        "debt": (
-            "LongTermDebtAndFinanceLeaseObligations",
-            "LongTermDebt",
+        ],
+        "current_assets": ["AssetsCurrent"],
+        "total_assets": ["Assets"],
+        "current_liabilities": ["LiabilitiesCurrent"],
+        "total_liabilities": ["Liabilities"],
+        "debt": [
+            "LongTermDebtAndFinanceLeaseObligationsCurrent",
+            "LongTermDebtCurrent",
             "LongTermDebtNoncurrent",
-        ),
-        "stockholders_equity": ("StockholdersEquity",),
+        ],
+        "stockholders_equity": ["StockholdersEquity"],
     },
     "cash_flow": {
-        "operating_cash_flow": ("NetCashProvidedByUsedInOperatingActivities",),
-        "capital_expenditure": ("PaymentsToAcquirePropertyPlantAndEquipment",),
-        "investing_cash_flow": ("NetCashProvidedByUsedInInvestingActivities",),
-        "financing_cash_flow": ("NetCashProvidedByUsedInFinancingActivities",),
-        "dividends_paid": ("PaymentsOfDividends",),
+        "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
+        "capital_expenditure": ["PaymentsToAcquirePropertyPlantAndEquipment"],
+        "investing_cash_flow": ["NetCashProvidedByUsedInInvestingActivities"],
+        "financing_cash_flow": ["NetCashProvidedByUsedInFinancingActivities"],
+        "dividends_paid": ["PaymentsOfDividends"],
     },
 }
 
@@ -76,7 +77,8 @@ OUTPUT_COLUMNS = [
 
 _SUPPORTED_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A"}
 _DISCRETE_QUARTER_FRAME = re.compile(r"^CY\d{4}Q[1-4]$")
-_INSTANT_QUARTER_PERIODS = {"Q1", "Q2", "Q3"}
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_INSTANT_QUARTER_PERIODS = {"Q1", "Q2", "Q3", "Q4"}
 
 
 def _financial_error(message: str) -> FinancialDataError:
@@ -126,6 +128,44 @@ def _validate_us_gaap(us_gaap: dict) -> None:
                     or (isinstance(value, float) and not math.isfinite(value))
                 ):
                     raise _financial_error("Company Facts observation value must be numeric")
+                form = item.get("form")
+                if not isinstance(form, str) or not form.strip():
+                    raise _financial_error("Company Facts observation form must be nonblank")
+                if form in _SUPPORTED_FORMS:
+                    _validate_supported_metadata(item)
+
+
+def _validate_iso_date(value: Any, field: str) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
+        raise _financial_error(f"Company Facts observation {field} must be an ISO date")
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise _financial_error(f"Company Facts observation {field} must be an ISO date") from None
+
+
+def _validate_supported_metadata(item: dict) -> None:
+    for field in ("start", "end", "filed"):
+        _validate_iso_date(item.get(field), field)
+    for field in ("frame", "accn"):
+        value = item.get(field)
+        if value is not None and not isinstance(value, str):
+            raise _financial_error(f"Company Facts observation {field} must be a string")
+    fiscal_year = item.get("fy")
+    if (
+        fiscal_year is not None
+        and (
+            isinstance(fiscal_year, bool)
+            or not isinstance(fiscal_year, Real)
+            or (not isinstance(fiscal_year, int) and not math.isfinite(fiscal_year))
+        )
+    ):
+        raise _financial_error("Company Facts observation fiscal year must be numeric")
+    fiscal_period = item.get("fp")
+    if not isinstance(fiscal_period, str) or not fiscal_period.strip():
+        raise _financial_error("Company Facts observation fiscal period must be nonblank")
 
 
 def _period_type(statement: str, observation: dict) -> str:
@@ -251,13 +291,13 @@ def _filter_years(rows: list[dict[str, Any]], years: int | None) -> list[dict[st
     ]
     if not fiscal_years:
         return rows
-    threshold = max(fiscal_years) - years
+    latest_years = set(sorted(set(fiscal_years), reverse=True)[:years])
     return [
         row
         for row in rows
         if isinstance(row["fiscal_year"], Real)
         and not isinstance(row["fiscal_year"], bool)
-        and row["fiscal_year"] > threshold
+        and row["fiscal_year"] in latest_years
     ]
 
 
